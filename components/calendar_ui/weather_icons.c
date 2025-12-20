@@ -17,37 +17,49 @@ static void draw_sun_icon(uint16_t cx, uint16_t cy, uint16_t size)
 {
     uint16_t radius = size / 3;
     uint16_t ray_len = size / 4;
-    uint16_t ray_start = radius + 4;
+    uint16_t outline = size / 18;
+    uint16_t ray_thickness = size / 24;
+    uint16_t ray_start = radius + outline + 2;
 
-    // Sun body (yellow circle)
-    gfx_fill_circle(cx, cy, radius, EPD_COLOR_YELLOW);
-    gfx_draw_circle(cx, cy, radius, EPD_COLOR_ORANGE);
+    if (outline < 2) {
+        outline = 2;
+    }
+    if (ray_thickness < 2) {
+        ray_thickness = 2;
+    }
 
-    // Sun rays (orange lines)
-    // Top
-    gfx_draw_line(cx, cy - ray_start, cx, cy - ray_start - ray_len, EPD_COLOR_ORANGE);
-    // Bottom
-    gfx_draw_line(cx, cy + ray_start, cx, cy + ray_start + ray_len, EPD_COLOR_ORANGE);
-    // Left
-    gfx_draw_line(cx - ray_start, cy, cx - ray_start - ray_len, cy, EPD_COLOR_ORANGE);
-    // Right
-    gfx_draw_line(cx + ray_start, cy, cx + ray_start + ray_len, cy, EPD_COLOR_ORANGE);
+    // Minimal sun: clean circle with 4 cardinal rays.
+    gfx_fill_circle(cx, cy, radius, EPD_COLOR_RED);
+    if (radius > outline) {
+        gfx_fill_circle(cx, cy, radius - outline, EPD_COLOR_YELLOW);
+    }
 
-    // Diagonal rays
-    uint16_t diag_start = (ray_start * 7) / 10;  // ~0.7 * ray_start
-    uint16_t diag_len = (ray_len * 7) / 10;
-    // Top-right
-    gfx_draw_line(cx + diag_start, cy - diag_start,
-                  cx + diag_start + diag_len, cy - diag_start - diag_len, EPD_COLOR_ORANGE);
-    // Top-left
-    gfx_draw_line(cx - diag_start, cy - diag_start,
-                  cx - diag_start - diag_len, cy - diag_start - diag_len, EPD_COLOR_ORANGE);
-    // Bottom-right
-    gfx_draw_line(cx + diag_start, cy + diag_start,
-                  cx + diag_start + diag_len, cy + diag_start + diag_len, EPD_COLOR_ORANGE);
-    // Bottom-left
-    gfx_draw_line(cx - diag_start, cy + diag_start,
-                  cx - diag_start - diag_len, cy + diag_start + diag_len, EPD_COLOR_ORANGE);
+    for (int i = -(int)(ray_thickness / 2); i <= (int)(ray_thickness / 2); i++) {
+        // Top
+        gfx_draw_line(cx + i, cy - ray_start, cx + i, cy - ray_start - ray_len, EPD_COLOR_RED);
+        // Bottom
+        gfx_draw_line(cx + i, cy + ray_start, cx + i, cy + ray_start + ray_len, EPD_COLOR_RED);
+        // Left
+        gfx_draw_line(cx - ray_start, cy + i, cx - ray_start - ray_len, cy + i, EPD_COLOR_RED);
+        // Right
+        gfx_draw_line(cx + ray_start, cy + i, cx + ray_start + ray_len, cy + i, EPD_COLOR_RED);
+    }
+}
+
+static void draw_cloud_layer(uint16_t cx, uint16_t cy, uint16_t size, int16_t inflate, epd_color_t color)
+{
+    int r1 = (int)(size / 4) + inflate;
+    int r2 = (int)(size / 5) + inflate;
+    int base_h = (int)(size / 5) + inflate;
+
+    if (r1 < 1) r1 = 1;
+    if (r2 < 1) r2 = 1;
+    if (base_h < 1) base_h = 1;
+
+    // Minimal cloud: two bumps + base.
+    gfx_fill_circle(cx - r2, cy, (uint16_t)r2, color);
+    gfx_fill_circle(cx + r2, cy, (uint16_t)r1, color);
+    gfx_fill_rect(cx - r2 - r1, cy, r1 + r2 * 2, base_h, color);
 }
 
 /**
@@ -55,24 +67,15 @@ static void draw_sun_icon(uint16_t cx, uint16_t cy, uint16_t size)
  */
 static void draw_cloud_icon(uint16_t cx, uint16_t cy, uint16_t size, epd_color_t color)
 {
-    uint16_t r1 = size / 4;       // Main bubble
-    uint16_t r2 = size / 5;       // Side bubbles
-    uint16_t r3 = size / 6;       // Small bubbles
+    int16_t border = (int16_t)(size / 24);
 
-    // Main cloud body (overlapping circles)
-    gfx_fill_circle(cx, cy, r1, color);
-    gfx_fill_circle(cx - r1, cy + r3, r2, color);
-    gfx_fill_circle(cx + r1, cy + r3, r2, color);
-    gfx_fill_circle(cx - r1/2, cy - r3, r3, color);
-    gfx_fill_circle(cx + r1/2, cy - r3, r3, color);
+    if (border < 2) {
+        border = 2;
+    }
 
-    // Fill bottom flat area
-    gfx_fill_rect(cx - r1 - r2/2, cy, r1*2 + r2, r1/2 + r3, color);
-
-    // Outline
-    gfx_draw_circle(cx, cy, r1, EPD_COLOR_BLACK);
-    gfx_draw_circle(cx - r1, cy + r3, r2, EPD_COLOR_BLACK);
-    gfx_draw_circle(cx + r1, cy + r3, r2, EPD_COLOR_BLACK);
+    // Minimal outline: black base then fill on top.
+    draw_cloud_layer(cx, cy, size, border, EPD_COLOR_BLACK);
+    draw_cloud_layer(cx, cy, size, 0, color);
 }
 
 /**
@@ -80,15 +83,21 @@ static void draw_cloud_icon(uint16_t cx, uint16_t cy, uint16_t size, epd_color_t
  */
 static void draw_rain_drops(uint16_t cx, uint16_t cy, uint16_t size)
 {
-    uint16_t drop_len = size / 6;
+    uint16_t drop_len = size / 5;
     uint16_t start_y = cy + size / 4;
     uint16_t spacing = size / 5;
+    uint16_t thickness = size / 24;
 
-    // Draw 3 rain drops
+    if (thickness < 2) {
+        thickness = 2;
+    }
+
+    // Minimal rain: 3 short lines.
     for (int i = -1; i <= 1; i++) {
         uint16_t x = cx + i * spacing;
-        gfx_draw_line(x, start_y, x - drop_len/3, start_y + drop_len, EPD_COLOR_BLUE);
-        gfx_draw_line(x + 1, start_y, x - drop_len/3 + 1, start_y + drop_len, EPD_COLOR_BLUE);
+        for (int t = -(int)(thickness / 2); t <= (int)(thickness / 2); t++) {
+            gfx_draw_line(x + t, start_y, x + t, start_y + drop_len, EPD_COLOR_BLUE);
+        }
     }
 }
 
@@ -101,11 +110,17 @@ static void draw_snow_flakes(uint16_t cx, uint16_t cy, uint16_t size)
     uint16_t spacing = size / 4;
     uint16_t flake_size = size / 10;
 
-    // Draw 3 snowflakes (as small circles)
+    if (flake_size < 2) {
+        flake_size = 2;
+    }
+
+    // Minimal snow: dots with a white core.
     for (int i = -1; i <= 1; i++) {
         uint16_t x = cx + i * spacing;
-        gfx_fill_circle(x, start_y, flake_size, EPD_COLOR_WHITE);
-        gfx_draw_circle(x, start_y, flake_size, EPD_COLOR_BLUE);
+        gfx_fill_circle(x, start_y, flake_size, EPD_COLOR_BLUE);
+        if (flake_size > 1) {
+            gfx_fill_circle(x, start_y, flake_size - 1, EPD_COLOR_WHITE);
+        }
     }
 }
 
@@ -117,16 +132,18 @@ static void draw_lightning(uint16_t cx, uint16_t cy, uint16_t size)
     uint16_t h = size / 3;
     uint16_t w = size / 6;
     uint16_t start_y = cy;
+    uint16_t thickness = size / 20;
 
-    // Simple zigzag lightning bolt
-    gfx_draw_line(cx, start_y, cx - w, start_y + h/2, EPD_COLOR_YELLOW);
-    gfx_draw_line(cx - w, start_y + h/2, cx, start_y + h/2, EPD_COLOR_YELLOW);
-    gfx_draw_line(cx, start_y + h/2, cx - w/2, start_y + h, EPD_COLOR_YELLOW);
+    if (thickness < 2) {
+        thickness = 2;
+    }
 
-    // Second pass for thickness
-    gfx_draw_line(cx + 1, start_y, cx - w + 1, start_y + h/2, EPD_COLOR_YELLOW);
-    gfx_draw_line(cx - w + 1, start_y + h/2, cx + 1, start_y + h/2, EPD_COLOR_YELLOW);
-    gfx_draw_line(cx + 1, start_y + h/2, cx - w/2 + 1, start_y + h, EPD_COLOR_YELLOW);
+    // Minimal bolt: single yellow zigzag with slight thickness.
+    for (int t = -(int)(thickness / 2); t <= (int)(thickness / 2); t++) {
+        gfx_draw_line(cx + t, start_y, cx - w + t, start_y + h / 2, EPD_COLOR_YELLOW);
+        gfx_draw_line(cx - w + t, start_y + h / 2, cx + t, start_y + h / 2, EPD_COLOR_YELLOW);
+        gfx_draw_line(cx + t, start_y + h / 2, cx - w / 2 + t, start_y + h, EPD_COLOR_YELLOW);
+    }
 }
 
 /**
@@ -136,12 +153,18 @@ static void draw_fog_lines(uint16_t cx, uint16_t cy, uint16_t size)
 {
     uint16_t line_width = size * 2 / 3;
     uint16_t spacing = size / 6;
+    uint16_t thickness = size / 24;
+
+    if (thickness < 2) {
+        thickness = 2;
+    }
 
     for (int i = -1; i <= 1; i++) {
         uint16_t y = cy + i * spacing;
         uint16_t x_start = cx - line_width / 2;
-        gfx_draw_hline(x_start, y, line_width, EPD_COLOR_BLACK);
-        gfx_draw_hline(x_start, y + 1, line_width, EPD_COLOR_BLACK);
+        for (int t = -(int)(thickness / 2); t <= (int)(thickness / 2); t++) {
+            gfx_draw_hline(x_start, y + t, line_width, EPD_COLOR_BLACK);
+        }
     }
 }
 

@@ -22,6 +22,8 @@
 #include "gfx_paint.h"
 #include "weather_service.h"
 #include "calendar_ui.h"
+#include "i2c_bsp.h"
+#include "axp_prot.h"
 
 static const char *TAG = "main";
 
@@ -68,6 +70,17 @@ static app_state_t s_current_state = STATE_INIT;
 static weather_data_t s_weather_data;
 static char s_error_message[64];
 static bool s_using_cached_data = false;
+
+/**
+ * @brief Initialize power management (AXP2101)
+ */
+static void init_power_management(void)
+{
+    i2c_master_Init();
+    axp_i2c_prot_init();
+    axp_cmd_init();
+    xTaskCreate(axp2101_isCharging_task, "axp2101_isCharging_task", 3 * 1024, NULL, 2, NULL);
+}
 
 /**
  * @brief Check if RTC cache is valid
@@ -187,6 +200,9 @@ static esp_err_t init_components(void)
     esp_err_t ret;
 
     ESP_LOGI(TAG, "Initializing components...");
+
+    // Initialize power management first (I2C + AXP2101)
+    init_power_management();
 
     // Initialize WiFi manager
     ret = wifi_manager_init();
