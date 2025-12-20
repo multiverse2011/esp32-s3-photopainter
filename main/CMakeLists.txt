@@ -7,6 +7,8 @@ idf_component_register(
         epd_driver
         gfx_library
         weather_service
+        task_service
+        train_service
         calendar_ui
         i2c_bsp
         axpPower

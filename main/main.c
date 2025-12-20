@@ -21,7 +21,10 @@
 #include "epd_driver.h"
 #include "gfx_paint.h"
 #include "weather_service.h"
+#include "task_service.h"
+#include "train_service.h"
 #include "calendar_ui.h"
+#include "display_types.h"
 #include "i2c_bsp.h"
 #include "axp_prot.h"
 
@@ -49,7 +52,7 @@ typedef struct {
     weather_data_t cached_weather;  /**< Cached weather data */
 } rtc_cache_t;
 
-#define RTC_MAGIC_NUMBER    0xCAFE0001
+#define RTC_MAGIC_NUMBER    0xCAFE0002  // Updated for hourly[5] weather data
 
 // RTC memory - survives deep sleep
 static RTC_DATA_ATTR rtc_cache_t s_rtc_cache;
@@ -59,7 +62,7 @@ typedef enum {
     STATE_INIT,
     STATE_WIFI_CONNECT,
     STATE_SYNC_TIME,
-    STATE_FETCH_WEATHER,
+    STATE_FETCH_DATA,         // Fetch all data (weather, tasks, train)
     STATE_RENDER_DISPLAY,
     STATE_REFRESH_DISPLAY,
     STATE_DEEP_SLEEP,
@@ -67,9 +70,12 @@ typedef enum {
 } app_state_t;
 
 static app_state_t s_current_state = STATE_INIT;
-static weather_data_t s_weather_data;
+static display_data_t s_display_data;   // Aggregate display data
 static char s_error_message[64];
 static bool s_using_cached_data = false;
+
+// Forward declarations
+static bool should_throttle_api_call(void);
 
 /**
  * @brief Initialize power management (AXP2101)
@@ -130,6 +136,77 @@ static bool rtc_cache_load_weather(weather_data_t *weather)
     memcpy(weather, &s_rtc_cache.cached_weather, sizeof(weather_data_t));
     ESP_LOGI(TAG, "Weather data loaded from RTC cache");
     return true;
+}
+
+/**
+ * @brief Fetch all data (weather, tasks, train) with graceful degradation
+ */
+static esp_err_t fetch_all_data(void)
+{
+    esp_err_t ret;
+    bool any_success = false;
+
+    // Fetch weather (required)
+    ESP_LOGI(TAG, "Fetching weather data...");
+    if (should_throttle_api_call() && rtc_cache_load_weather(&s_display_data.weather)) {
+        ESP_LOGI(TAG, "Using RTC cached weather (API throttled)");
+        s_using_cached_data = true;
+        any_success = true;
+    } else {
+        ret = weather_service_fetch(&s_display_data.weather);
+        if (ret == ESP_OK) {
+            weather_service_save_cache(&s_display_data.weather);
+            rtc_cache_save_weather(&s_display_data.weather);
+            s_using_cached_data = false;
+            any_success = true;
+        } else {
+            ESP_LOGW(TAG, "Weather fetch failed, trying cache");
+            if (rtc_cache_load_weather(&s_display_data.weather) && s_display_data.weather.valid) {
+                s_using_cached_data = true;
+                any_success = true;
+            } else if (weather_service_load_cache(&s_display_data.weather) == ESP_OK && s_display_data.weather.valid) {
+                s_using_cached_data = true;
+                any_success = true;
+            }
+        }
+    }
+
+    // Fetch tasks (optional - graceful degradation)
+    ESP_LOGI(TAG, "Fetching tasks...");
+    ret = task_service_fetch(&s_display_data.tasks);
+    if (ret == ESP_OK) {
+        task_service_save_cache(&s_display_data.tasks);
+        ESP_LOGI(TAG, "Tasks fetched: %d items", s_display_data.tasks.count);
+    } else {
+        ESP_LOGW(TAG, "Task fetch failed, trying cache");
+        ret = task_service_load_cache(&s_display_data.tasks);
+        if (ret != ESP_OK) {
+            // No cached tasks - that's OK
+            memset(&s_display_data.tasks, 0, sizeof(task_list_t));
+            s_display_data.tasks.valid = false;
+        }
+    }
+
+    // Fetch train status (optional - graceful degradation)
+    ESP_LOGI(TAG, "Fetching train status...");
+    ret = train_service_fetch(&s_display_data.train);
+    if (ret == ESP_OK) {
+        train_service_save_cache(&s_display_data.train);
+        ESP_LOGI(TAG, "Train status: %d", s_display_data.train.status);
+    } else {
+        ESP_LOGW(TAG, "Train fetch failed, trying cache");
+        ret = train_service_load_cache(&s_display_data.train);
+        if (ret != ESP_OK) {
+            // No cached train info - that's OK
+            memset(&s_display_data.train, 0, sizeof(train_status_t));
+            s_display_data.train.valid = false;
+        }
+    }
+
+    // Set update time
+    s_display_data.update_time = time(NULL);
+
+    return any_success ? ESP_OK : ESP_FAIL;
 }
 
 /**
@@ -239,6 +316,20 @@ static esp_err_t init_components(void)
         return ret;
     }
 
+    // Initialize task service (optional - don't fail if it fails)
+    ret = task_service_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to initialize task service: %s (continuing)", esp_err_to_name(ret));
+        // Don't return error - task service is optional
+    }
+
+    // Initialize train service (optional - don't fail if it fails)
+    ret = train_service_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to initialize train service: %s (continuing)", esp_err_to_name(ret));
+        // Don't return error - train service is optional
+    }
+
     ESP_LOGI(TAG, "All components initialized successfully");
     return ESP_OK;
 }
@@ -257,6 +348,8 @@ static void cleanup_components(void)
     wifi_manager_disconnect();
 
     // Deinitialize components
+    train_service_deinit();
+    task_service_deinit();
     weather_service_deinit();
     epd_driver_deinit();
     wifi_manager_deinit();
@@ -293,8 +386,10 @@ static void run_state_machine(void)
                 } else {
                     // Try to use cached data
                     ESP_LOGW(TAG, "WiFi connection failed, trying cache");
-                    ret = weather_service_load_cache(&s_weather_data);
-                    if (ret == ESP_OK && weather_service_cache_valid(&s_weather_data)) {
+                    ret = weather_service_load_cache(&s_display_data.weather);
+                    if (ret == ESP_OK && weather_service_cache_valid(&s_display_data.weather)) {
+                        s_using_cached_data = true;
+                        s_display_data.update_time = s_display_data.weather.last_update;
                         s_current_state = STATE_RENDER_DISPLAY;
                     } else {
                         snprintf(s_error_message, sizeof(s_error_message),
@@ -308,57 +403,29 @@ static void run_state_machine(void)
                 ESP_LOGI(TAG, "STATE: SYNC_TIME");
                 ret = wifi_manager_sync_time(SNTP_SYNC_TIMEOUT_MS);
                 if (ret == ESP_OK) {
-                    s_current_state = STATE_FETCH_WEATHER;
+                    s_current_state = STATE_FETCH_DATA;
                 } else {
                     // Continue anyway, time might be stale but usable
                     ESP_LOGW(TAG, "Time sync failed, continuing...");
-                    s_current_state = STATE_FETCH_WEATHER;
+                    s_current_state = STATE_FETCH_DATA;
                 }
                 break;
 
-            case STATE_FETCH_WEATHER:
-                ESP_LOGI(TAG, "STATE: FETCH_WEATHER");
-
-                // Check if API call should be throttled (use RTC cache)
-                if (should_throttle_api_call() && rtc_cache_load_weather(&s_weather_data)) {
-                    ESP_LOGI(TAG, "Using RTC cached data (API throttled)");
-                    s_using_cached_data = true;
-                    s_current_state = STATE_RENDER_DISPLAY;
-                    break;
-                }
-
-                ret = weather_service_fetch(&s_weather_data);
+            case STATE_FETCH_DATA:
+                ESP_LOGI(TAG, "STATE: FETCH_DATA");
+                ret = fetch_all_data();
                 if (ret == ESP_OK) {
-                    // Save to both NVS and RTC cache
-                    weather_service_save_cache(&s_weather_data);
-                    rtc_cache_save_weather(&s_weather_data);
-                    s_using_cached_data = false;
                     s_current_state = STATE_RENDER_DISPLAY;
                 } else {
-                    // Try RTC cache first (faster)
-                    ESP_LOGW(TAG, "Weather fetch failed, trying RTC cache");
-                    if (rtc_cache_load_weather(&s_weather_data) && s_weather_data.valid) {
-                        s_using_cached_data = true;
-                        s_current_state = STATE_RENDER_DISPLAY;
-                    } else {
-                        // Try NVS cache
-                        ESP_LOGW(TAG, "RTC cache miss, trying NVS cache");
-                        ret = weather_service_load_cache(&s_weather_data);
-                        if (ret == ESP_OK && s_weather_data.valid) {
-                            s_using_cached_data = true;
-                            s_current_state = STATE_RENDER_DISPLAY;
-                        } else {
-                            snprintf(s_error_message, sizeof(s_error_message),
-                                     "No weather data");
-                            s_current_state = STATE_ERROR;
-                        }
-                    }
+                    snprintf(s_error_message, sizeof(s_error_message),
+                             "No data available");
+                    s_current_state = STATE_ERROR;
                 }
                 break;
 
             case STATE_RENDER_DISPLAY:
                 ESP_LOGI(TAG, "STATE: RENDER_DISPLAY (cached=%d)", s_using_cached_data);
-                ret = calendar_ui_draw_ex(&s_weather_data, time(NULL), s_using_cached_data);
+                ret = calendar_ui_draw_full(&s_display_data, time(NULL), s_using_cached_data);
                 if (ret == ESP_OK) {
                     s_current_state = STATE_REFRESH_DISPLAY;
                 } else {
@@ -382,7 +449,7 @@ static void run_state_machine(void)
             case STATE_ERROR:
                 ESP_LOGE(TAG, "STATE: ERROR - %s", s_error_message);
                 // Draw error screen
-                calendar_ui_draw_error(s_error_message, s_weather_data.last_update);
+                calendar_ui_draw_error(s_error_message, s_display_data.weather.last_update);
                 epd_driver_refresh();
                 s_current_state = STATE_DEEP_SLEEP;
                 break;
@@ -452,7 +519,7 @@ void app_main(void)
     }
 
     // Initialize data
-    memset(&s_weather_data, 0, sizeof(s_weather_data));
+    memset(&s_display_data, 0, sizeof(s_display_data));
     memset(s_error_message, 0, sizeof(s_error_message));
     s_using_cached_data = false;
 

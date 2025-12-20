@@ -12,26 +12,6 @@
 static const char *TAG = "weather_parser";
 
 /**
- * @brief Get hour of day from Unix timestamp
- */
-static int get_hour_of_day(time_t timestamp)
-{
-    struct tm timeinfo;
-    localtime_r(&timestamp, &timeinfo);
-    return timeinfo.tm_hour;
-}
-
-/**
- * @brief Get day of year from Unix timestamp
- */
-static int get_day_of_year(time_t timestamp)
-{
-    struct tm timeinfo;
-    localtime_r(&timestamp, &timeinfo);
-    return timeinfo.tm_yday;
-}
-
-/**
  * @brief Parse a single forecast entry
  */
 static void parse_forecast_entry(cJSON *entry, weather_forecast_t *forecast)
@@ -150,17 +130,18 @@ esp_err_t weather_parse_response(const char *json, weather_data_t *data)
         return ESP_ERR_INVALID_RESPONSE;
     }
 
-    // Get current day
+    // Get current time
     time_t now = time(NULL);
-    int current_day = get_day_of_year(now);
-    int day_index = 0;
-    int last_day = -1;
+    data->base_time = now;
 
-    // Iterate through forecast entries
+    // Use the first 5 forecast entries from the API response
+    // OpenWeatherMap returns forecasts at fixed 3-hour intervals (00:00, 03:00, 06:00, etc.)
+    // The API returns entries starting from the nearest future forecast time
+    int hourly_index = 0;
     cJSON *entry;
     cJSON_ArrayForEach(entry, list) {
-        if (day_index >= 4) {
-            break;  // We only need 4 days
+        if (hourly_index >= 5) {
+            break;
         }
 
         cJSON *dt = cJSON_GetObjectItem(entry, "dt");
@@ -169,43 +150,25 @@ esp_err_t weather_parse_response(const char *json, weather_data_t *data)
         }
 
         time_t timestamp = (time_t)dt->valuedouble;
-        int entry_day = get_day_of_year(timestamp);
-        int entry_hour = get_hour_of_day(timestamp);
 
-        // Skip if we already have data for this day
-        if (entry_day == last_day) {
-            continue;
-        }
-
-        // Select noon entries (11:00-13:00 preferred)
-        // If we're past noon, still accept this day
-        if (entry_hour >= 11 && entry_hour <= 13) {
-            ESP_LOGD(TAG, "Found noon entry for day %d (hour %d)", entry_day, entry_hour);
-            parse_forecast_entry(entry, &data->daily[day_index]);
-            last_day = entry_day;
-            day_index++;
-        } else if (entry_hour > 13 && entry_day > last_day) {
-            // Accept first entry after noon if we haven't got noon
-            ESP_LOGD(TAG, "Using afternoon entry for day %d (hour %d)", entry_day, entry_hour);
-            parse_forecast_entry(entry, &data->daily[day_index]);
-            last_day = entry_day;
-            day_index++;
-        }
+        ESP_LOGD(TAG, "Using forecast entry %d with timestamp %ld", hourly_index, (long)timestamp);
+        parse_forecast_entry(entry, &data->hourly[hourly_index]);
+        hourly_index++;
     }
 
     cJSON_Delete(root);
 
     // Check if we got enough data
-    if (day_index < 4) {
-        ESP_LOGW(TAG, "Only found %d days of forecast data", day_index);
-        // Still consider it valid if we have at least 1 day
-        if (day_index == 0) {
+    if (hourly_index < 5) {
+        ESP_LOGW(TAG, "Only found %d hourly forecast entries", hourly_index);
+        // Still consider it valid if we have at least 1 entry
+        if (hourly_index == 0) {
             return ESP_ERR_INVALID_RESPONSE;
         }
     }
 
     data->valid = true;
-    ESP_LOGI(TAG, "Successfully parsed %d days of forecast for %s", day_index, data->city_name);
+    ESP_LOGI(TAG, "Successfully parsed %d hourly forecasts for %s", hourly_index, data->city_name);
 
     return ESP_OK;
 }

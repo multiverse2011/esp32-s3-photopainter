@@ -1,0 +1,10 @@
+menu "Train Service Configuration"
+
+    config TRAIN_LINE_NAME
+        string "Train Line Name"
+        default ""
+        help
+            Name of the train line to monitor for delays.
+            Example: "中央線" (must match exactly with JR East page)
+
+endmenu

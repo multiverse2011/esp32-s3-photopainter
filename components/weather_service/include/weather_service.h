@@ -73,6 +73,16 @@ bool weather_service_cache_valid(const weather_data_t *data);
  */
 void weather_service_deinit(void);
 
+/**
+ * @brief Calculate forecast time slots based on current time
+ *
+ * Generates 5 timestamps at 3-hour intervals starting from current time.
+ *
+ * @param base_time Current time (base for calculations)
+ * @param times Output: Array of 5 timestamps
+ */
+void weather_service_get_forecast_times(time_t base_time, time_t *times);
+
 #ifdef __cplusplus
 }
 #endif

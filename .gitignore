@@ -4,6 +4,9 @@
 /cmake-build-*/
 /managed_components/
 
+# ESP-IDF config (generated, machine-specific)
+/sdkconfig
+
 # ESP-IDF config backups
 /sdkconfig.old
 /sdkconfig.bak
