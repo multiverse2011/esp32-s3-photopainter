@@ -23,15 +23,15 @@ extern "C" {
 /** Buffer size: 4 bits per pixel, 2 pixels per byte */
 #define EPD_BUFFER_SIZE ((EPD_WIDTH * EPD_HEIGHT) / 2)
 
-/** 7-color palette */
+/** 7-color palette (matches Waveshare 7.3" 7-color mapping) */
 typedef enum {
     EPD_COLOR_BLACK  = 0,
     EPD_COLOR_WHITE  = 1,
-    EPD_COLOR_GREEN  = 2,
-    EPD_COLOR_BLUE   = 3,
-    EPD_COLOR_RED    = 4,
-    EPD_COLOR_YELLOW = 5,
-    EPD_COLOR_ORANGE = 6
+    EPD_COLOR_YELLOW = 2,
+    EPD_COLOR_RED    = 3,
+    EPD_COLOR_ORANGE = 4,
+    EPD_COLOR_BLUE   = 5,
+    EPD_COLOR_GREEN  = 6
 } epd_color_t;
 
 /**

@@ -27,8 +27,8 @@ static const char *TAG = "epd_spi";
 #define EPD_SPI_CLOCK_HZ  (10 * 1000 * 1000)  // 10 MHz
 #define EPD_DMA_CHANNEL   SPI_DMA_CH_AUTO
 
-// DMA buffer size
-#define DMA_BUFFER_SIZE   4096
+// DMA buffer size (matches reference chunk size)
+#define DMA_BUFFER_SIZE   5000
 
 static spi_device_handle_t s_spi_handle = NULL;
 static uint8_t *s_dma_buffer = NULL;
@@ -172,14 +172,20 @@ void epd_spi_send_data_burst(const uint8_t *data, size_t len)
 
     size_t remaining = len;
     const uint8_t *ptr = data;
-    const size_t CHUNK_SIZE = 5000;  // Match reference project
+    const size_t CHUNK_SIZE = DMA_BUFFER_SIZE;  // Match reference project
 
     while (remaining > 0) {
         size_t chunk = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
+        const uint8_t *tx_ptr = ptr;
+
+        if (s_dma_buffer && chunk <= DMA_BUFFER_SIZE) {
+            memcpy(s_dma_buffer, ptr, chunk);
+            tx_ptr = s_dma_buffer;
+        }
 
         spi_transaction_t trans = {
             .length = chunk * 8,
-            .tx_buffer = ptr,
+            .tx_buffer = tx_ptr,
         };
 
         spi_device_polling_transmit(s_spi_handle, &trans);

@@ -42,6 +42,11 @@ esp_err_t calendar_ui_init(void)
     }
 
     ESP_LOGI(TAG, "Initializing calendar UI");
+    esp_err_t ret = gfx_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize graphics library: %s", esp_err_to_name(ret));
+        return ret;
+    }
     s_initialized = true;
     return ESP_OK;
 }
@@ -101,13 +106,13 @@ void calendar_ui_draw_header(time_t current_time)
              weekday_names[timeinfo.tm_wday],
              month_names[timeinfo.tm_mon],
              timeinfo.tm_mday);
-    gfx_draw_string(20, 20, date_str, GFX_FONT_32, EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_LEFT);
+    gfx_draw_string(20, 20, date_str, GFX_FONT_24, EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_LEFT);
 
     // Draw time on right side
     char time_str[16];
     snprintf(time_str, sizeof(time_str), "%02d:%02d",
              timeinfo.tm_hour, timeinfo.tm_min);
-    gfx_draw_string(SCREEN_WIDTH - 20, 20, time_str, GFX_FONT_32, EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_RIGHT);
+    gfx_draw_string(SCREEN_WIDTH - 20, 20, time_str, GFX_FONT_24, EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_RIGHT);
 
     // Draw separator line
     gfx_draw_hline(0, HEADER_HEIGHT - 2, SCREEN_WIDTH, EPD_COLOR_BLACK);
@@ -150,7 +155,7 @@ void calendar_ui_draw_forecast(int column, const weather_forecast_t *forecast)
     // Draw temperature (high/low)
     char temp_str[32];
     format_temp(forecast->temp_max, temp_str, sizeof(temp_str));
-    gfx_draw_string(col_center - 30, FORECAST_TOP + TEMP_Y_OFFSET, temp_str, GFX_FONT_32,
+    gfx_draw_string(col_center - 30, FORECAST_TOP + TEMP_Y_OFFSET, temp_str, GFX_FONT_24,
                     get_temp_color(forecast->temp_max), EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
 
     // Degree symbol (using 'o')
@@ -267,7 +272,7 @@ esp_err_t calendar_ui_draw_error(const char *error_message, time_t last_update)
 
     // Draw error header
     gfx_fill_rect(0, 0, SCREEN_WIDTH, 60, EPD_COLOR_RED);
-    gfx_draw_string(SCREEN_WIDTH / 2, 15, "Error", GFX_FONT_32,
+    gfx_draw_string(SCREEN_WIDTH / 2, 15, "Error", GFX_FONT_24,
                     EPD_COLOR_WHITE, EPD_COLOR_RED, GFX_ALIGN_CENTER);
 
     // Draw error message
