@@ -10,56 +10,12 @@
 #include <stdbool.h>
 #include <time.h>
 #include "weather_types.h"
+#include "task_types.h"
+#include "train_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/**
- * @brief Maximum number of tasks to display
- */
-#define MAX_TASKS 5
-
-/**
- * @brief Single task item
- */
-typedef struct {
-    char name[64];              /**< Task name/description */
-    bool completed;             /**< Completion status */
-} task_t;
-
-/**
- * @brief Task list data
- */
-typedef struct {
-    task_t tasks[MAX_TASKS];    /**< Task array */
-    int count;                  /**< Number of tasks (0-5) */
-    time_t last_update;         /**< Fetch timestamp */
-    bool valid;                 /**< Data validity flag */
-} task_list_t;
-
-/**
- * @brief Train delay status codes
- */
-typedef enum {
-    TRAIN_STATUS_UNKNOWN = 0,   /**< Unknown/fetching */
-    TRAIN_STATUS_NORMAL,        /**< No delay */
-    TRAIN_STATUS_DELAYED,       /**< Delayed */
-    TRAIN_STATUS_SUSPENDED,     /**< Service suspended */
-    TRAIN_STATUS_ERROR          /**< Fetch error */
-} train_status_code_t;
-
-/**
- * @brief Train line status data
- */
-typedef struct {
-    char line_name[32];         /**< Line name (e.g., "中央線") */
-    train_status_code_t status; /**< Status code */
-    int delay_minutes;          /**< Delay in minutes (0 if normal) */
-    char message[128];          /**< Status message */
-    time_t last_update;         /**< Fetch timestamp */
-    bool valid;                 /**< Data validity flag */
-} train_status_t;
 
 /**
  * @brief Aggregate data for display rendering

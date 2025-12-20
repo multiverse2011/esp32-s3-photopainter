@@ -4,6 +4,7 @@
  */
 
 #include "task_types.h"
+#include "esp_err.h"
 #include "esp_log.h"
 #include "cJSON.h"
 #include <string.h>
