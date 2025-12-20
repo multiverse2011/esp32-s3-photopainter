@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(cat:*)",
-      "Bash(idf.py:*)"
+      "Bash(idf.py:*)",
+      "Bash(git fetch:*)",
+      "Bash(if exist specs dir /b specs)",
+      "mcp__serena__list_dir",
+      "Bash(powershell:*)",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
+      "*",
+      "Bash(dir:*)",
+      "Bash(findstr:*)"
     ]
   }
 }

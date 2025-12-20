@@ -1,0 +1,67 @@
+menu "Weather Calendar Configuration"
+
+    config WIFI_SSID
+        string "WiFi SSID"
+        default "myssid"
+        help
+            SSID (network name) to connect to.
+
+    config WIFI_PASSWORD
+        string "WiFi Password"
+        default "mypassword"
+        help
+            WiFi password (WPA or WPA2) to use.
+
+    config OPENWEATHERMAP_API_KEY
+        string "OpenWeatherMap API Key"
+        default ""
+        help
+            Your OpenWeatherMap API key (32 characters).
+            Get one at https://openweathermap.org/api
+
+    config LOCATION_LATITUDE
+        string "Location Latitude"
+        default "35.6762"
+        help
+            Latitude of your location for weather data.
+
+    config LOCATION_LONGITUDE
+        string "Location Longitude"
+        default "139.6503"
+        help
+            Longitude of your location for weather data.
+
+    config TIMEZONE
+        string "Timezone"
+        default "JST-9"
+        help
+            POSIX timezone string (e.g., JST-9 for Japan).
+
+    config DISABLE_DEEP_SLEEP
+        bool "Disable deep sleep (debug)"
+        default n
+        help
+            Keep running without entering deep sleep.
+
+    config UPDATE_INTERVAL_DAY_MIN
+        int "Update Interval (Day) in Minutes"
+        default 30
+        range 10 120
+        help
+            Display update interval during daytime (6:00-22:00).
+
+    config UPDATE_INTERVAL_NIGHT_MIN
+        int "Update Interval (Night) in Minutes"
+        default 120
+        range 30 360
+        help
+            Display update interval during nighttime (22:00-6:00).
+
+    config API_CALL_INTERVAL_HOURS
+        int "API Call Interval in Hours"
+        default 3
+        range 1 12
+        help
+            Minimum interval between OpenWeatherMap API calls.
+
+endmenu
