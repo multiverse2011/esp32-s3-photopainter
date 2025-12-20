@@ -12,26 +12,6 @@
 static const char *TAG = "weather_parser";
 
 /**
- * @brief Get hour of day from Unix timestamp
- */
-static int get_hour_of_day(time_t timestamp)
-{
-    struct tm timeinfo;
-    localtime_r(&timestamp, &timeinfo);
-    return timeinfo.tm_hour;
-}
-
-/**
- * @brief Get day of year from Unix timestamp
- */
-static int get_day_of_year(time_t timestamp)
-{
-    struct tm timeinfo;
-    localtime_r(&timestamp, &timeinfo);
-    return timeinfo.tm_yday;
-}
-
-/**
  * @brief Parse a single forecast entry
  */
 static void parse_forecast_entry(cJSON *entry, weather_forecast_t *forecast)
@@ -150,24 +130,20 @@ esp_err_t weather_parse_response(const char *json, weather_data_t *data)
         return ESP_ERR_INVALID_RESPONSE;
     }
 
-    // Get current time and calculate target timestamps
-    // We want 5 forecasts at 3-hour intervals: base, +3h, +6h, +9h, +12h
+    // Get current time
     time_t now = time(NULL);
     data->base_time = now;
 
-    // Calculate target timestamps (3-hour intervals)
-    time_t target_times[5];
-    for (int i = 0; i < 5; i++) {
-        target_times[i] = now + (i * 3 * 3600);  // 0, 3, 6, 9, 12 hours from now
-    }
-
-    // Track which slots we've filled
-    bool slot_filled[5] = {false, false, false, false, false};
+    // Use the first 5 forecast entries from the API response
+    // OpenWeatherMap returns forecasts at fixed 3-hour intervals (00:00, 03:00, 06:00, etc.)
+    // The API returns entries starting from the nearest future forecast time
     int hourly_index = 0;
-
-    // Iterate through forecast entries and find closest matches
     cJSON *entry;
     cJSON_ArrayForEach(entry, list) {
+        if (hourly_index >= 5) {
+            break;
+        }
+
         cJSON *dt = cJSON_GetObjectItem(entry, "dt");
         if (!cJSON_IsNumber(dt)) {
             continue;
@@ -175,30 +151,9 @@ esp_err_t weather_parse_response(const char *json, weather_data_t *data)
 
         time_t timestamp = (time_t)dt->valuedouble;
 
-        // Find which slot this entry is closest to
-        for (int i = 0; i < 5; i++) {
-            if (slot_filled[i]) {
-                continue;
-            }
-
-            // Check if this entry is within 1.5 hours of our target
-            time_t diff = timestamp - target_times[i];
-            if (diff < 0) diff = -diff;  // Absolute value
-
-            if (diff <= 5400) {  // 1.5 hours = 5400 seconds
-                ESP_LOGD(TAG, "Found entry for slot %d (target=%ld, actual=%ld, diff=%ld)",
-                         i, (long)target_times[i], (long)timestamp, (long)diff);
-                parse_forecast_entry(entry, &data->hourly[i]);
-                slot_filled[i] = true;
-                hourly_index++;
-                break;
-            }
-        }
-
-        // Stop if we have all 5 slots filled
-        if (hourly_index >= 5) {
-            break;
-        }
+        ESP_LOGD(TAG, "Using forecast entry %d with timestamp %ld", hourly_index, (long)timestamp);
+        parse_forecast_entry(entry, &data->hourly[hourly_index]);
+        hourly_index++;
     }
 
     cJSON_Delete(root);

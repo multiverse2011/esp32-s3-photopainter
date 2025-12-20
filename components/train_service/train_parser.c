@@ -88,12 +88,38 @@ esp_err_t train_parse_html(const char *html, size_t len, const char *line_name, 
 
     ESP_LOGI(TAG, "Found line '%s' in page", line_name);
 
-    // Search for status keywords near the line name (within 200 bytes)
-    size_t search_len = 200;
-    size_t remaining = len - (line_pos - html);
-    if (search_len > remaining) {
-        search_len = remaining;
+    // Debug: Log content before and after line name
+    char debug_buf[201];
+
+    // Content before
+    size_t before_len = (line_pos - html < 200) ? (line_pos - html) : 200;
+    memcpy(debug_buf, line_pos - before_len, before_len);
+    debug_buf[before_len] = '\0';
+    ESP_LOGI(TAG, "Content BEFORE line: %.200s", debug_buf);
+
+    // Content after
+    size_t debug_after_len = (len - (line_pos - html) < 200) ? (len - (line_pos - html)) : 200;
+    memcpy(debug_buf, line_pos, debug_after_len);
+    debug_buf[debug_after_len] = '\0';
+    ESP_LOGI(TAG, "Content AFTER line: %.200s", debug_buf);
+
+    // Debug: Check if status keywords exist anywhere in HTML
+    const char *test_normal = "\xE5\xB9\xB3\xE5\xB8\xB8\xE9\x81\x8B\xE8\xBB\xA2";  // 平常運転
+    const char *found_normal = find_string(html, len, test_normal);
+    if (found_normal) {
+        ptrdiff_t distance = found_normal - line_pos;
+        ESP_LOGI(TAG, "DEBUG: Found '平常運転' at distance %d from line name", (int)distance);
+    } else {
+        ESP_LOGW(TAG, "DEBUG: '平常運転' NOT FOUND anywhere in HTML!");
     }
+
+    // Search for status keywords near the line name
+    // Status may be before or after the line name in HTML structure
+    // Search 10000 bytes before and 500 bytes after (status can be far from line name)
+    size_t before_offset = (line_pos - html < 10000) ? (line_pos - html) : 10000;
+    const char *search_start = line_pos - before_offset;
+    size_t after_len = (len - (line_pos - html) < 500) ? (len - (line_pos - html)) : 500;
+    size_t search_len = before_offset + after_len;
 
     // Check for various status keywords (in UTF-8)
     // Note: These are Japanese strings that indicate train status
@@ -109,19 +135,19 @@ esp_err_t train_parse_html(const char *html, size_t len, const char *line_name, 
     const char *normal_ascii = "Normal";
     const char *delay_ascii = "Delay";
 
-    if (find_string(line_pos, search_len, normal_str) != NULL ||
-        find_string(line_pos, search_len, normal_ascii) != NULL) {
+    if (find_string(search_start, search_len, normal_str) != NULL ||
+        find_string(search_start, search_len, normal_ascii) != NULL) {
         status->status = TRAIN_STATUS_NORMAL;
         snprintf(status->message, sizeof(status->message), "Normal operation");
         ESP_LOGI(TAG, "Status: Normal");
     }
-    else if (find_string(line_pos, search_len, suspended_str) != NULL) {
+    else if (find_string(search_start, search_len, suspended_str) != NULL) {
         status->status = TRAIN_STATUS_SUSPENDED;
         snprintf(status->message, sizeof(status->message), "Service suspended");
         ESP_LOGI(TAG, "Status: Suspended");
     }
-    else if (find_string(line_pos, search_len, delay_str) != NULL ||
-             find_string(line_pos, search_len, delay_ascii) != NULL) {
+    else if (find_string(search_start, search_len, delay_str) != NULL ||
+             find_string(search_start, search_len, delay_ascii) != NULL) {
         status->status = TRAIN_STATUS_DELAYED;
         snprintf(status->message, sizeof(status->message), "Delayed");
         ESP_LOGI(TAG, "Status: Delayed");

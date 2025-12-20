@@ -10,7 +10,13 @@
       "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
       "*",
       "Bash(dir:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "mcp__serena__search_for_pattern",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__find_file",
+      "WebFetch(domain:traininfo.jreast.co.jp)",
+      "mcp__serena__find_symbol",
+      "Bash(C:Espressifframeworksesp-idf-v5.4.1export.bat)"
     ]
   }
 }
