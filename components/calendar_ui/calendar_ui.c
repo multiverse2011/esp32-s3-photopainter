@@ -21,6 +21,9 @@ static const char *TAG = "calendar_ui";
 #define ICON_Y_OFFSET       60
 #define TEMP_Y_OFFSET       160
 #define DETAIL_Y_OFFSET     220
+#define UI_COLOR_ACCENT     EPD_COLOR_RED
+#define UI_COLOR_COOL       EPD_COLOR_BLUE
+#define UI_COLOR_MUTED      EPD_COLOR_GREEN
 
 // Weekday names for display
 static const char *weekday_names[] = {
@@ -106,17 +109,17 @@ void calendar_ui_draw_header(time_t current_time)
              weekday_names[timeinfo.tm_wday],
              month_names[timeinfo.tm_mon],
              timeinfo.tm_mday);
-    gfx_draw_string(20, 20, date_str, GFX_FONT_24, EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_LEFT);
+    gfx_draw_string(20, 20, date_str, GFX_FONT_24, UI_COLOR_ACCENT, EPD_COLOR_WHITE, GFX_ALIGN_LEFT);
 
     // Draw time on right side
     char time_str[16];
     snprintf(time_str, sizeof(time_str), "%02d:%02d",
              timeinfo.tm_hour, timeinfo.tm_min);
-    gfx_draw_string(SCREEN_WIDTH - 20, 20, time_str, GFX_FONT_24, EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_RIGHT);
+    gfx_draw_string(SCREEN_WIDTH - 20, 20, time_str, GFX_FONT_24, UI_COLOR_COOL, EPD_COLOR_WHITE, GFX_ALIGN_RIGHT);
 
     // Draw separator line
-    gfx_draw_hline(0, HEADER_HEIGHT - 2, SCREEN_WIDTH, EPD_COLOR_BLACK);
-    gfx_draw_hline(0, HEADER_HEIGHT - 1, SCREEN_WIDTH, EPD_COLOR_BLACK);
+    gfx_draw_hline(0, HEADER_HEIGHT - 2, SCREEN_WIDTH, UI_COLOR_COOL);
+    gfx_draw_hline(0, HEADER_HEIGHT - 1, SCREEN_WIDTH, UI_COLOR_ACCENT);
 }
 
 void calendar_ui_draw_forecast(int column, const weather_forecast_t *forecast)
@@ -140,13 +143,14 @@ void calendar_ui_draw_forecast(int column, const weather_forecast_t *forecast)
         snprintf(day_str, sizeof(day_str), "%s", weekday_names[timeinfo.tm_wday]);
     }
     gfx_draw_string(col_center, FORECAST_TOP + 5, day_str, GFX_FONT_24,
-                    EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
+                    (column == 0) ? UI_COLOR_ACCENT : EPD_COLOR_BLACK,
+                    EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
 
     // Draw date (M/D)
     char date_str[16];
     snprintf(date_str, sizeof(date_str), "%d/%d", timeinfo.tm_mon + 1, timeinfo.tm_mday);
     gfx_draw_string(col_center, FORECAST_TOP + 30, date_str, GFX_FONT_16,
-                    EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
+                    UI_COLOR_COOL, EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
 
     // Draw weather icon
     calendar_ui_draw_weather_icon(col_center, FORECAST_TOP + ICON_Y_OFFSET + UI_ICON_SIZE/2,
@@ -160,7 +164,7 @@ void calendar_ui_draw_forecast(int column, const weather_forecast_t *forecast)
 
     // Degree symbol (using 'o')
     gfx_draw_string(col_center + 10, FORECAST_TOP + TEMP_Y_OFFSET, "C", GFX_FONT_24,
-                    EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_LEFT);
+                    get_temp_color(forecast->temp_max), EPD_COLOR_WHITE, GFX_ALIGN_LEFT);
 
     // Low temperature
     format_temp(forecast->temp_min, temp_str, sizeof(temp_str));
@@ -172,18 +176,18 @@ void calendar_ui_draw_forecast(int column, const weather_forecast_t *forecast)
     char humidity_str[16];
     snprintf(humidity_str, sizeof(humidity_str), "%d%%", forecast->humidity);
     gfx_draw_string(col_center, FORECAST_TOP + DETAIL_Y_OFFSET, humidity_str, GFX_FONT_16,
-                    EPD_COLOR_BLUE, EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
+                    UI_COLOR_COOL, EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
 
     // Draw wind
     char wind_str[24];
     snprintf(wind_str, sizeof(wind_str), "%s %.0fm/s",
              get_wind_direction(forecast->wind_deg), forecast->wind_speed);
     gfx_draw_string(col_center, FORECAST_TOP + DETAIL_Y_OFFSET + 25, wind_str, GFX_FONT_16,
-                    EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
+                    UI_COLOR_MUTED, EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
 
     // Draw column separator (except for last column)
     if (column < 3) {
-        gfx_draw_vline(col_x + COLUMN_WIDTH - 1, HEADER_HEIGHT, SCREEN_HEIGHT - HEADER_HEIGHT, EPD_COLOR_BLACK);
+        gfx_draw_vline(col_x + COLUMN_WIDTH - 1, HEADER_HEIGHT, SCREEN_HEIGHT - HEADER_HEIGHT, UI_COLOR_COOL);
     }
 }
 
@@ -217,7 +221,7 @@ esp_err_t calendar_ui_draw_ex(const weather_data_t *weather, time_t current_time
     // Draw city name on left
     if (strlen(weather->city_name) > 0) {
         gfx_draw_string(20, bottom_y, weather->city_name,
-                        GFX_FONT_16, EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_LEFT);
+                        GFX_FONT_16, UI_COLOR_ACCENT, EPD_COLOR_WHITE, GFX_ALIGN_LEFT);
     }
 
     // Draw cache status and last update on right
@@ -237,7 +241,7 @@ esp_err_t calendar_ui_draw_ex(const weather_data_t *weather, time_t current_time
 
         // Draw in orange to indicate cached data
         gfx_draw_string(SCREEN_WIDTH - 20, bottom_y, status_str,
-                        GFX_FONT_16, EPD_COLOR_ORANGE, EPD_COLOR_WHITE, GFX_ALIGN_RIGHT);
+                        GFX_FONT_16, UI_COLOR_ACCENT, EPD_COLOR_WHITE, GFX_ALIGN_RIGHT);
     } else if (weather->last_update > 0) {
         // Show last update time
         struct tm timeinfo;
@@ -247,7 +251,7 @@ esp_err_t calendar_ui_draw_ex(const weather_data_t *weather, time_t current_time
         snprintf(update_str, sizeof(update_str), "Updated %02d:%02d",
                  timeinfo.tm_hour, timeinfo.tm_min);
         gfx_draw_string(SCREEN_WIDTH - 20, bottom_y, update_str,
-                        GFX_FONT_16, EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_RIGHT);
+                        GFX_FONT_16, UI_COLOR_MUTED, EPD_COLOR_WHITE, GFX_ALIGN_RIGHT);
     }
 
     ESP_LOGI(TAG, "Calendar UI drawing complete");

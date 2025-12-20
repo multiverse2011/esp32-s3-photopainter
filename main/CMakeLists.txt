@@ -8,6 +8,8 @@ idf_component_register(
         gfx_library
         weather_service
         calendar_ui
+        i2c_bsp
+        axpPower
         nvs_flash
         esp_hw_support
 )
