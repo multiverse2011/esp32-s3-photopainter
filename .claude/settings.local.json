@@ -8,7 +8,9 @@
       "mcp__serena__list_dir",
       "Bash(powershell:*)",
       "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
-      "*"
+      "*",
+      "Bash(dir:*)",
+      "Bash(findstr:*)"
     ]
   }
 }

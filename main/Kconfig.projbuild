@@ -37,6 +37,12 @@ menu "Weather Calendar Configuration"
         help
             POSIX timezone string (e.g., JST-9 for Japan).
 
+    config DISABLE_DEEP_SLEEP
+        bool "Disable deep sleep (debug)"
+        default n
+        help
+            Keep running without entering deep sleep.
+
     config UPDATE_INTERVAL_DAY_MIN
         int "Update Interval (Day) in Minutes"
         default 30

@@ -138,7 +138,7 @@ void calendar_ui_draw_forecast(int column, const weather_forecast_t *forecast)
                     EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
 
     // Draw date (M/D)
-    char date_str[8];
+    char date_str[16];
     snprintf(date_str, sizeof(date_str), "%d/%d", timeinfo.tm_mon + 1, timeinfo.tm_mday);
     gfx_draw_string(col_center, FORECAST_TOP + 30, date_str, GFX_FONT_16,
                     EPD_COLOR_BLACK, EPD_COLOR_WHITE, GFX_ALIGN_CENTER);
