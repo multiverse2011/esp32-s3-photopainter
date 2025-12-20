@@ -1,6 +1,6 @@
 # ESP32-S3 E-ink Weather Calendar
 
-A battery-powered smart display using ESP32-S3 and a Waveshare 7.3-inch 7-color E-Paper display. Shows weather forecast, task list, and train status with current date/time, optimized for low power consumption.
+A battery-powered smart display using ESP32-S3 and a Waveshare 7.3-inch ACeP 6-color E-Paper display. Shows weather forecast, task list, and train status with current date/time, optimized for low power consumption.
 
 ## Features
 
@@ -16,8 +16,14 @@ A battery-powered smart display using ESP32-S3 and a Waveshare 7.3-inch 7-color 
 
 ## Hardware Requirements
 
-- **Board**: Waveshare ESP32-S3 PhotoPainter (or compatible ESP32-S3 with PSRAM)
-- **Display**: Waveshare 7.3-inch 7-color E-Paper (800x480 resolution)
+- **Board**: [Waveshare ESP32-S3 PhotoPainter](https://www.waveshare.com/esp32-s3-photopainter.htm)
+  - ESP32-S3-WROOM-1-N16R8 (16MB Flash, 8MB PSRAM)
+  - AXP2101 power management IC
+  - PCF85063 RTC with backup battery
+  - SHTC3 temperature/humidity sensor
+  - ES7210/ES8311 audio codec (dual microphone array)
+- **Display**: 7.3-inch E Ink Spectra 6 (ACeP 6-Color) E-Paper (800x480 resolution)
+- **Power**: 3.7V lithium battery (optional, with onboard charging)
 
 ### Pin Configuration
 
@@ -29,6 +35,8 @@ A battery-powered smart display using ESP32-S3 and a Waveshare 7.3-inch 7-color 
 | DC       | 8        |
 | RST      | 12       |
 | BUSY     | 13       |
+| I2C SDA  | 47       |
+| I2C SCL  | 48       |
 
 ## Prerequisites
 
