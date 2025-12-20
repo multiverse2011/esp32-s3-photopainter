@@ -12,6 +12,8 @@
 
 /**
  * @brief Draw sun icon
+ *
+ * Uses orange outline with yellow fill for 7-color E-Paper appeal.
  */
 static void draw_sun_icon(uint16_t cx, uint16_t cy, uint16_t size)
 {
@@ -28,21 +30,22 @@ static void draw_sun_icon(uint16_t cx, uint16_t cy, uint16_t size)
         ray_thickness = 2;
     }
 
-    // Minimal sun: clean circle with 4 cardinal rays.
-    gfx_fill_circle(cx, cy, radius, EPD_COLOR_RED);
+    // Sun with orange outline and yellow fill (7-color E-Paper colors)
+    gfx_fill_circle(cx, cy, radius, EPD_COLOR_ORANGE);
     if (radius > outline) {
         gfx_fill_circle(cx, cy, radius - outline, EPD_COLOR_YELLOW);
     }
 
+    // Draw rays in orange
     for (int i = -(int)(ray_thickness / 2); i <= (int)(ray_thickness / 2); i++) {
         // Top
-        gfx_draw_line(cx + i, cy - ray_start, cx + i, cy - ray_start - ray_len, EPD_COLOR_RED);
+        gfx_draw_line(cx + i, cy - ray_start, cx + i, cy - ray_start - ray_len, EPD_COLOR_ORANGE);
         // Bottom
-        gfx_draw_line(cx + i, cy + ray_start, cx + i, cy + ray_start + ray_len, EPD_COLOR_RED);
+        gfx_draw_line(cx + i, cy + ray_start, cx + i, cy + ray_start + ray_len, EPD_COLOR_ORANGE);
         // Left
-        gfx_draw_line(cx - ray_start, cy + i, cx - ray_start - ray_len, cy + i, EPD_COLOR_RED);
+        gfx_draw_line(cx - ray_start, cy + i, cx - ray_start - ray_len, cy + i, EPD_COLOR_ORANGE);
         // Right
-        gfx_draw_line(cx + ray_start, cy + i, cx + ray_start + ray_len, cy + i, EPD_COLOR_RED);
+        gfx_draw_line(cx + ray_start, cy + i, cx + ray_start + ray_len, cy + i, EPD_COLOR_ORANGE);
     }
 }
 

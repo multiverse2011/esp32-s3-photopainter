@@ -301,3 +301,16 @@ void weather_service_deinit(void)
     s_initialized = false;
     ESP_LOGI(TAG, "Weather service deinitialized");
 }
+
+void weather_service_get_forecast_times(time_t base_time, time_t *times)
+{
+    if (times == NULL) {
+        return;
+    }
+
+    // Generate 5 timestamps at 3-hour intervals
+    // 0: now, 1: +3h, 2: +6h, 3: +9h, 4: +12h
+    for (int i = 0; i < 5; i++) {
+        times[i] = base_time + (i * 3 * 3600);
+    }
+}

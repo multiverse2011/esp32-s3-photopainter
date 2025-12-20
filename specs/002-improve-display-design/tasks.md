@@ -24,12 +24,12 @@
 
 **Purpose**: Project initialization, new component structure, and shared type definitions
 
-- [ ] T001 Create task_service component directory structure: `components/task_service/`, `components/task_service/include/`
-- [ ] T002 [P] Create train_service component directory structure: `components/train_service/`, `components/train_service/include/`
-- [ ] T003 [P] Create shared display types header in `components/calendar_ui/include/display_types.h` with `display_data_t`, `ui_layout_t` from data-model.md
-- [ ] T004 [P] Add Kconfig entries for new services in `components/task_service/Kconfig.projbuild` (TODOIST_API_TOKEN)
-- [ ] T005 [P] Add Kconfig entries for train service in `components/train_service/Kconfig.projbuild` (TRAIN_LINE_NAME)
-- [ ] T006 Register new components in project CMakeLists.txt
+- [X] T001 Create task_service component directory structure: `components/task_service/`, `components/task_service/include/`
+- [X] T002 [P] Create train_service component directory structure: `components/train_service/`, `components/train_service/include/`
+- [X] T003 [P] Create shared display types header in `components/calendar_ui/include/display_types.h` with `display_data_t`, `ui_layout_t` from data-model.md
+- [X] T004 [P] Add Kconfig entries for new services in `components/task_service/Kconfig.projbuild` (TODOIST_API_TOKEN)
+- [X] T005 [P] Add Kconfig entries for train service in `components/train_service/Kconfig.projbuild` (TRAIN_LINE_NAME)
+- [X] T006 Register new components in project CMakeLists.txt
 
 ---
 
@@ -39,11 +39,11 @@
 
 **WARNING**: No user story work can begin until this phase is complete
 
-- [ ] T007 Define `weather_forecast_t` (hourly) structure in `components/weather_service/include/weather_types.h` - change from daily[4] to hourly[5] per data-model.md
-- [ ] T008 [P] Define `task_t` and `task_list_t` structures in `components/task_service/include/task_types.h` per data-model.md
-- [ ] T009 [P] Define `train_status_t` and `train_status_code_t` structures in `components/train_service/include/train_types.h` per data-model.md
-- [ ] T010 [P] Define UI layout constants (`UI_SIDEBAR_WIDTH`, `UI_CONTENT_WIDTH`, `UI_PADDING`, etc.) in `components/calendar_ui/include/calendar_ui.h`
-- [ ] T011 Update `weather_data_t` to use `hourly[5]` instead of `daily[4]` in `components/weather_service/include/weather_types.h`
+- [X] T007 Define `weather_forecast_t` (hourly) structure in `components/weather_service/include/weather_types.h` - change from daily[4] to hourly[5] per data-model.md
+- [X] T008 [P] Define `task_t` and `task_list_t` structures in `components/task_service/include/task_types.h` per data-model.md
+- [X] T009 [P] Define `train_status_t` and `train_status_code_t` structures in `components/train_service/include/train_types.h` per data-model.md
+- [X] T010 [P] Define UI layout constants (`UI_SIDEBAR_WIDTH`, `UI_CONTENT_WIDTH`, `UI_PADDING`, etc.) in `components/calendar_ui/include/calendar_ui.h`
+- [X] T011 Update `weather_data_t` to use `hourly[5]` instead of `daily[4]` in `components/weather_service/include/weather_types.h`
 
 **Checkpoint**: Foundation ready - data structures defined, user story implementation can begin
 
@@ -57,15 +57,15 @@
 
 ### Implementation for User Story 1
 
-- [ ] T012 [US1] Implement `weather_service_get_forecast_times()` function to calculate 5 timestamps (base_time + 0/3/6/9/12 hours) in `components/weather_service/weather_service.c`
-- [ ] T013 [US1] Modify `weather_service_fetch_hourly()` to use 3-hour forecast API endpoint in `components/weather_service/weather_http.c`
-- [ ] T014 [US1] Update weather JSON parser to extract 5 hourly forecasts from API response in `components/weather_service/weather_parser.c`
-- [ ] T015 [US1] Implement 2-column base layout function `draw_layout_frame()` in `components/calendar_ui/calendar_ui.c` (200px sidebar + 600px content)
-- [ ] T016 [US1] Implement weather section renderer `draw_weather_section()` with 5 columns (120px each) in `components/calendar_ui/calendar_ui.c`
-- [ ] T017 [US1] Implement time label rendering (HH:00 format) for each weather column in `components/calendar_ui/calendar_ui.c`
-- [ ] T018 [US1] Implement temperature display (large font) in weather columns in `components/calendar_ui/calendar_ui.c`
-- [ ] T019 [US1] Implement humidity/wind display (small font) in weather columns in `components/calendar_ui/calendar_ui.c`
-- [ ] T020 [US1] Update weather cache functions to handle `hourly[5]` data in `components/weather_service/weather_service.c`
+- [X] T012 [US1] Implement `weather_service_get_forecast_times()` function to calculate 5 timestamps (base_time + 0/3/6/9/12 hours) in `components/weather_service/weather_service.c`
+- [X] T013 [US1] Modify `weather_service_fetch_hourly()` to use 3-hour forecast API endpoint in `components/weather_service/weather_http.c`
+- [X] T014 [US1] Update weather JSON parser to extract 5 hourly forecasts from API response in `components/weather_service/weather_parser.c`
+- [X] T015 [US1] Implement 2-column base layout function `draw_layout_frame()` in `components/calendar_ui/calendar_ui.c` (200px sidebar + 600px content)
+- [X] T016 [US1] Implement weather section renderer `draw_weather_section()` with 5 columns (120px each) in `components/calendar_ui/calendar_ui.c`
+- [X] T017 [US1] Implement time label rendering (HH:00 format) for each weather column in `components/calendar_ui/calendar_ui.c`
+- [X] T018 [US1] Implement temperature display (large font) in weather columns in `components/calendar_ui/calendar_ui.c`
+- [X] T019 [US1] Implement humidity/wind display (small font) in weather columns in `components/calendar_ui/calendar_ui.c`
+- [X] T020 [US1] Update weather cache functions to handle `hourly[5]` data in `components/weather_service/weather_service.c`
 
 **Checkpoint**: User Story 1 complete - 5 time-slot weather display functional
 
@@ -79,13 +79,13 @@
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Define weather-to-color mapping constants (sunny=yellow/orange, rain=blue, cloudy=black outline) in `components/calendar_ui/include/calendar_ui.h`
-- [ ] T022 [US2] Implement color-coded sun icon (yellow/orange fill) in `components/calendar_ui/weather_icons.c`
-- [ ] T023 [P] [US2] Implement color-coded rain icon (blue rain drops) in `components/calendar_ui/weather_icons.c`
-- [ ] T024 [P] [US2] Implement color-coded cloud icon (white fill, black outline) in `components/calendar_ui/weather_icons.c`
-- [ ] T025 [P] [US2] Implement color-coded snow icon in `components/calendar_ui/weather_icons.c`
-- [ ] T026 [US2] Implement temperature-based color selection function (cold=blue, warm=red/orange) in `components/calendar_ui/calendar_ui.c`
-- [ ] T027 [US2] Apply temperature colors to temperature text rendering in `components/calendar_ui/calendar_ui.c`
+- [X] T021 [US2] Define weather-to-color mapping constants (sunny=yellow/orange, rain=blue, cloudy=black outline) in `components/calendar_ui/include/calendar_ui.h`
+- [X] T022 [US2] Implement color-coded sun icon (yellow/orange fill) in `components/calendar_ui/weather_icons.c`
+- [X] T023 [P] [US2] Implement color-coded rain icon (blue rain drops) in `components/calendar_ui/weather_icons.c`
+- [X] T024 [P] [US2] Implement color-coded cloud icon (white fill, black outline) in `components/calendar_ui/weather_icons.c`
+- [X] T025 [P] [US2] Implement color-coded snow icon in `components/calendar_ui/weather_icons.c`
+- [X] T026 [US2] Implement temperature-based color selection function (cold=blue, warm=red/orange) in `components/calendar_ui/calendar_ui.c`
+- [X] T027 [US2] Apply temperature colors to temperature text rendering in `components/calendar_ui/calendar_ui.c`
 
 **Checkpoint**: User Story 2 complete - color-coded weather icons and temperature functional
 
@@ -99,11 +99,11 @@
 
 ### Implementation for User Story 3
 
-- [ ] T028 [US3] Implement segment-style large digit drawing function `draw_large_digit()` in `components/calendar_ui/calendar_ui.c`
-- [ ] T029 [US3] Implement `draw_large_number()` for multi-digit date display in `components/calendar_ui/calendar_ui.c`
-- [ ] T030 [US3] Implement sidebar date section with large day number and month name in `components/calendar_ui/calendar_ui.c`
-- [ ] T031 [US3] Apply consistent padding (UI_PADDING) to all layout sections in `components/calendar_ui/calendar_ui.c`
-- [ ] T032 [US3] Ensure weather column spacing is uniform (UI_WEATHER_COL_WIDTH) in `components/calendar_ui/calendar_ui.c`
+- [X] T028 [US3] Implement segment-style large digit drawing function `draw_large_digit()` in `components/calendar_ui/calendar_ui.c`
+- [X] T029 [US3] Implement `draw_large_number()` for multi-digit date display in `components/calendar_ui/calendar_ui.c`
+- [X] T030 [US3] Implement sidebar date section with large day number and month name in `components/calendar_ui/calendar_ui.c`
+- [X] T031 [US3] Apply consistent padding (UI_PADDING) to all layout sections in `components/calendar_ui/calendar_ui.c`
+- [X] T032 [US3] Ensure weather column spacing is uniform (UI_WEATHER_COL_WIDTH) in `components/calendar_ui/calendar_ui.c`
 
 **Checkpoint**: User Story 3 complete - balanced layout with large date and consistent spacing
 
@@ -117,14 +117,14 @@
 
 ### Implementation for User Story 4
 
-- [ ] T033 [US4] Implement `task_service_init()` in `components/task_service/task_service.c`
-- [ ] T034 [US4] Implement HTTPS request to Todoist API with Bearer token in `components/task_service/task_service.c`
-- [ ] T035 [US4] Implement JSON parser for Todoist response in `components/task_service/task_parser.c`
-- [ ] T036 [US4] Implement `task_service_fetch()` to populate `task_list_t` (max 5 tasks) in `components/task_service/task_service.c`
-- [ ] T037 [US4] Implement task NVS cache functions (`task_service_save_cache`, `task_service_load_cache`) in `components/task_service/task_service.c`
-- [ ] T038 [US4] Implement `task_service_deinit()` in `components/task_service/task_service.c`
-- [ ] T039 [US4] Implement Tasks section renderer `draw_tasks_section()` with bullet list in `components/calendar_ui/calendar_ui.c`
-- [ ] T040 [US4] Handle empty task list case ("No tasks" display) in `components/calendar_ui/calendar_ui.c`
+- [X] T033 [US4] Implement `task_service_init()` in `components/task_service/task_service.c`
+- [X] T034 [US4] Implement HTTPS request to Todoist API with Bearer token in `components/task_service/task_service.c`
+- [X] T035 [US4] Implement JSON parser for Todoist response in `components/task_service/task_parser.c`
+- [X] T036 [US4] Implement `task_service_fetch()` to populate `task_list_t` (max 5 tasks) in `components/task_service/task_service.c`
+- [X] T037 [US4] Implement task NVS cache functions (`task_service_save_cache`, `task_service_load_cache`) in `components/task_service/task_service.c`
+- [X] T038 [US4] Implement `task_service_deinit()` in `components/task_service/task_service.c`
+- [X] T039 [US4] Implement Tasks section renderer `draw_tasks_section()` with bullet list in `components/calendar_ui/calendar_ui.c`
+- [X] T040 [US4] Handle empty task list case ("No tasks" display) in `components/calendar_ui/calendar_ui.c`
 
 **Checkpoint**: User Story 4 complete - Todoist tasks displayed in sidebar
 
@@ -138,15 +138,15 @@
 
 ### Implementation for User Story 5
 
-- [ ] T041 [US5] Implement `train_service_init()` in `components/train_service/train_service.c`
-- [ ] T042 [US5] Implement HTTPS page fetch from JR East URL in `components/train_service/train_service.c`
-- [ ] T043 [US5] Implement Shift_JIS to UTF-8 conversion function in `components/train_service/train_service.c`
-- [ ] T044 [US5] Implement HTML parser to find target line and status in `components/train_service/train_parser.c`
-- [ ] T045 [US5] Implement `train_service_fetch()` to populate `train_status_t` in `components/train_service/train_service.c`
-- [ ] T046 [US5] Implement train status NVS cache functions in `components/train_service/train_service.c`
-- [ ] T047 [US5] Implement `train_service_deinit()` in `components/train_service/train_service.c`
-- [ ] T048 [US5] Implement Train section renderer `draw_train_section()` in `components/calendar_ui/calendar_ui.c`
-- [ ] T049 [US5] Implement color-coded train status display (green=normal, red=delayed) in `components/calendar_ui/calendar_ui.c`
+- [X] T041 [US5] Implement `train_service_init()` in `components/train_service/train_service.c`
+- [X] T042 [US5] Implement HTTPS page fetch from JR East URL in `components/train_service/train_service.c`
+- [X] T043 [US5] Implement Shift_JIS to UTF-8 conversion function in `components/train_service/train_service.c`
+- [X] T044 [US5] Implement HTML parser to find target line and status in `components/train_service/train_parser.c`
+- [X] T045 [US5] Implement `train_service_fetch()` to populate `train_status_t` in `components/train_service/train_service.c`
+- [X] T046 [US5] Implement train status NVS cache functions in `components/train_service/train_service.c`
+- [X] T047 [US5] Implement `train_service_deinit()` in `components/train_service/train_service.c`
+- [X] T048 [US5] Implement Train section renderer `draw_train_section()` in `components/calendar_ui/calendar_ui.c`
+- [X] T049 [US5] Implement color-coded train status display (green=normal, red=delayed) in `components/calendar_ui/calendar_ui.c`
 
 **Checkpoint**: User Story 5 complete - train delay info displayed with color coding
 
@@ -160,9 +160,9 @@
 
 ### Implementation for User Story 6
 
-- [ ] T050 [US6] Implement `draw_updated_timestamp()` function in `components/calendar_ui/calendar_ui.c`
-- [ ] T051 [US6] Format timestamp as "Updated YYYY/MM/DD HH:MM" in `components/calendar_ui/calendar_ui.c`
-- [ ] T052 [US6] Position timestamp in bottom-right of content area in `components/calendar_ui/calendar_ui.c`
+- [X] T050 [US6] Implement `draw_updated_timestamp()` function in `components/calendar_ui/calendar_ui.c`
+- [X] T051 [US6] Format timestamp as "Updated YYYY/MM/DD HH:MM" in `components/calendar_ui/calendar_ui.c`
+- [X] T052 [US6] Position timestamp in bottom-right of content area in `components/calendar_ui/calendar_ui.c`
 
 **Checkpoint**: User Story 6 complete - update timestamp displayed
 
@@ -172,12 +172,12 @@
 
 **Purpose**: Wire all components together in main application
 
-- [ ] T053 Integrate task_service initialization in `main/main.c`
-- [ ] T054 [P] Integrate train_service initialization in `main/main.c`
-- [ ] T055 Update data fetch sequence to include tasks and train status in `main/main.c`
-- [ ] T056 Populate `display_data_t` aggregate structure with all service data in `main/main.c`
-- [ ] T057 Update main display render call to use new `draw_full_layout()` in `main/main.c`
-- [ ] T058 Implement graceful degradation when services fail (use cache) in `main/main.c`
+- [X] T053 Integrate task_service initialization in `main/main.c`
+- [X] T054 [P] Integrate train_service initialization in `main/main.c`
+- [X] T055 Update data fetch sequence to include tasks and train status in `main/main.c`
+- [X] T056 Populate `display_data_t` aggregate structure with all service data in `main/main.c`
+- [X] T057 Update main display render call to use new `draw_full_layout()` in `main/main.c`
+- [X] T058 Implement graceful degradation when services fail (use cache) in `main/main.c`
 
 ---
 
@@ -185,9 +185,9 @@
 
 **Purpose**: Final improvements and edge case handling
 
-- [ ] T059 Handle long task names with truncation in `components/calendar_ui/calendar_ui.c`
-- [ ] T060 [P] Handle extreme temperatures (-10 to 100) layout in `components/calendar_ui/calendar_ui.c`
-- [ ] T061 [P] Add cache staleness indicator for all data types in `components/calendar_ui/calendar_ui.c`
+- [X] T059 Handle long task names with truncation in `components/calendar_ui/calendar_ui.c`
+- [X] T060 [P] Handle extreme temperatures (-10 to 100) layout in `components/calendar_ui/calendar_ui.c`
+- [X] T061 [P] Add cache staleness indicator for all data types in `components/calendar_ui/calendar_ui.c`
 - [ ] T062 Verify display update time remains under 15 seconds
 - [ ] T063 Run quickstart.md validation checklist
 

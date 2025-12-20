@@ -1,0 +1,10 @@
+menu "Task Service Configuration"
+
+    config TODOIST_API_TOKEN
+        string "Todoist API Token"
+        default ""
+        help
+            API token for Todoist REST API.
+            Get your token from: Settings -> Integrations -> Developer
+
+endmenu

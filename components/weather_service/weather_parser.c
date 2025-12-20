@@ -150,62 +150,70 @@ esp_err_t weather_parse_response(const char *json, weather_data_t *data)
         return ESP_ERR_INVALID_RESPONSE;
     }
 
-    // Get current day
+    // Get current time and calculate target timestamps
+    // We want 5 forecasts at 3-hour intervals: base, +3h, +6h, +9h, +12h
     time_t now = time(NULL);
-    int current_day = get_day_of_year(now);
-    int day_index = 0;
-    int last_day = -1;
+    data->base_time = now;
 
-    // Iterate through forecast entries
+    // Calculate target timestamps (3-hour intervals)
+    time_t target_times[5];
+    for (int i = 0; i < 5; i++) {
+        target_times[i] = now + (i * 3 * 3600);  // 0, 3, 6, 9, 12 hours from now
+    }
+
+    // Track which slots we've filled
+    bool slot_filled[5] = {false, false, false, false, false};
+    int hourly_index = 0;
+
+    // Iterate through forecast entries and find closest matches
     cJSON *entry;
     cJSON_ArrayForEach(entry, list) {
-        if (day_index >= 4) {
-            break;  // We only need 4 days
-        }
-
         cJSON *dt = cJSON_GetObjectItem(entry, "dt");
         if (!cJSON_IsNumber(dt)) {
             continue;
         }
 
         time_t timestamp = (time_t)dt->valuedouble;
-        int entry_day = get_day_of_year(timestamp);
-        int entry_hour = get_hour_of_day(timestamp);
 
-        // Skip if we already have data for this day
-        if (entry_day == last_day) {
-            continue;
+        // Find which slot this entry is closest to
+        for (int i = 0; i < 5; i++) {
+            if (slot_filled[i]) {
+                continue;
+            }
+
+            // Check if this entry is within 1.5 hours of our target
+            time_t diff = timestamp - target_times[i];
+            if (diff < 0) diff = -diff;  // Absolute value
+
+            if (diff <= 5400) {  // 1.5 hours = 5400 seconds
+                ESP_LOGD(TAG, "Found entry for slot %d (target=%ld, actual=%ld, diff=%ld)",
+                         i, (long)target_times[i], (long)timestamp, (long)diff);
+                parse_forecast_entry(entry, &data->hourly[i]);
+                slot_filled[i] = true;
+                hourly_index++;
+                break;
+            }
         }
 
-        // Select noon entries (11:00-13:00 preferred)
-        // If we're past noon, still accept this day
-        if (entry_hour >= 11 && entry_hour <= 13) {
-            ESP_LOGD(TAG, "Found noon entry for day %d (hour %d)", entry_day, entry_hour);
-            parse_forecast_entry(entry, &data->daily[day_index]);
-            last_day = entry_day;
-            day_index++;
-        } else if (entry_hour > 13 && entry_day > last_day) {
-            // Accept first entry after noon if we haven't got noon
-            ESP_LOGD(TAG, "Using afternoon entry for day %d (hour %d)", entry_day, entry_hour);
-            parse_forecast_entry(entry, &data->daily[day_index]);
-            last_day = entry_day;
-            day_index++;
+        // Stop if we have all 5 slots filled
+        if (hourly_index >= 5) {
+            break;
         }
     }
 
     cJSON_Delete(root);
 
     // Check if we got enough data
-    if (day_index < 4) {
-        ESP_LOGW(TAG, "Only found %d days of forecast data", day_index);
-        // Still consider it valid if we have at least 1 day
-        if (day_index == 0) {
+    if (hourly_index < 5) {
+        ESP_LOGW(TAG, "Only found %d hourly forecast entries", hourly_index);
+        // Still consider it valid if we have at least 1 entry
+        if (hourly_index == 0) {
             return ESP_ERR_INVALID_RESPONSE;
         }
     }
 
     data->valid = true;
-    ESP_LOGI(TAG, "Successfully parsed %d days of forecast for %s", day_index, data->city_name);
+    ESP_LOGI(TAG, "Successfully parsed %d hourly forecasts for %s", hourly_index, data->city_name);
 
     return ESP_OK;
 }

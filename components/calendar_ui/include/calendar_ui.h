@@ -10,17 +10,40 @@
 
 #include "weather_types.h"
 #include "esp_err.h"
+#include "epd_driver.h"
 #include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/** UI Layout Constants */
-#define UI_HEADER_HEIGHT     80
-#define UI_COLUMN_WIDTH      200
-#define UI_ICON_SIZE         80
-#define UI_PADDING           10
+/** UI Layout Constants - 2-column layout (sidebar + content) */
+#define UI_SCREEN_WIDTH      800
+#define UI_SCREEN_HEIGHT     480
+#define UI_SIDEBAR_WIDTH     200   /**< Left sidebar width (pixels) */
+#define UI_CONTENT_WIDTH     600   /**< Right content width (pixels) */
+#define UI_PADDING           10    /**< General padding (pixels) */
+#define UI_WEATHER_COL_WIDTH 120   /**< Weather column width (5 columns in 600px) */
+#define UI_WEATHER_ROW_HEIGHT 200  /**< Weather section height */
+#define UI_HEADER_HEIGHT     80    /**< Legacy - for compatibility */
+#define UI_COLUMN_WIDTH      200   /**< Legacy - for compatibility */
+#define UI_ICON_SIZE         70    /**< Weather icon size (pixels) */
+
+/** Weather-to-color mapping */
+#define UI_COLOR_SUN_PRIMARY    EPD_COLOR_ORANGE  /**< Sunny weather - primary */
+#define UI_COLOR_SUN_SECONDARY  EPD_COLOR_YELLOW  /**< Sunny weather - secondary */
+#define UI_COLOR_RAIN           EPD_COLOR_BLUE    /**< Rain weather */
+#define UI_COLOR_CLOUD_FILL     EPD_COLOR_WHITE   /**< Cloud fill */
+#define UI_COLOR_CLOUD_OUTLINE  EPD_COLOR_BLACK   /**< Cloud outline */
+#define UI_COLOR_SNOW           EPD_COLOR_BLUE    /**< Snow weather */
+
+/** Temperature-to-color thresholds */
+#define UI_TEMP_COLD_THRESHOLD  10   /**< Below this = cold (blue) */
+#define UI_TEMP_WARM_THRESHOLD  25   /**< Above this = warm (orange/red) */
+
+/** Train status colors */
+#define UI_COLOR_TRAIN_NORMAL   EPD_COLOR_GREEN   /**< No delay */
+#define UI_COLOR_TRAIN_DELAYED  EPD_COLOR_RED     /**< Delayed/suspended */
 
 /**
  * @brief Initialize calendar UI
@@ -91,6 +114,19 @@ void calendar_ui_draw_forecast(int column, const weather_forecast_t *forecast);
 void calendar_ui_draw_weather_icon(uint16_t x, uint16_t y,
                                    uint16_t size,
                                    const char *icon_code);
+
+/**
+ * @brief Draw complete display with all data
+ *
+ * New API for drawing with weather, tasks, and train data.
+ * Include display_types.h before using this function.
+ *
+ * @param data Complete display data (weather + tasks + train)
+ * @param current_time Current time
+ * @param using_cache True if displaying cached data
+ * @return ESP_OK on success
+ */
+esp_err_t calendar_ui_draw_full(const void *data, time_t current_time, bool using_cache);
 
 #ifdef __cplusplus
 }

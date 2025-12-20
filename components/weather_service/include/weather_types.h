@@ -15,13 +15,13 @@ extern "C" {
 #endif
 
 /**
- * @brief Single day weather forecast
+ * @brief Single time slot weather forecast (3-hour interval)
  */
 typedef struct {
-    time_t timestamp;           /**< Forecast time (noon) */
-    float temp;                 /**< Representative temperature (C) */
-    float temp_min;             /**< Minimum temperature (C) */
-    float temp_max;             /**< Maximum temperature (C) */
+    time_t timestamp;           /**< Forecast time */
+    float temp;                 /**< Temperature (C) */
+    float temp_min;             /**< Minimum temperature (C) - for compatibility */
+    float temp_max;             /**< Maximum temperature (C) - for compatibility */
     int humidity;               /**< Relative humidity (%) */
     char description[64];       /**< Weather description */
     char icon_code[4];          /**< OpenWeatherMap icon code */
@@ -30,13 +30,14 @@ typedef struct {
 } weather_forecast_t;
 
 /**
- * @brief Complete weather data set
+ * @brief Complete weather data set (5 time slots)
  */
 typedef struct {
-    weather_forecast_t daily[4]; /**< 4-day forecast */
-    char city_name[64];          /**< Location name */
-    time_t last_update;          /**< Fetch timestamp */
-    bool valid;                  /**< Data validity flag */
+    weather_forecast_t hourly[5]; /**< 5 time slots (3-hour intervals) */
+    char city_name[64];           /**< Location name */
+    time_t last_update;           /**< Fetch timestamp */
+    time_t base_time;             /**< Base time for hourly slots */
+    bool valid;                   /**< Data validity flag */
 } weather_data_t;
 
 #ifdef __cplusplus
