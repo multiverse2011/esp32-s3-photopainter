@@ -34,11 +34,30 @@ static spi_device_handle_t s_spi_handle = NULL;
 static uint8_t *s_dma_buffer = NULL;
 
 /**
+ * @brief Initialize CS pin as GPIO for manual control
+ */
+static void epd_cs_gpio_init(void)
+{
+    gpio_config_t cs_conf = {
+        .pin_bit_mask = (1ULL << EPD_PIN_CS),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&cs_conf);
+    gpio_set_level(EPD_PIN_CS, 1);  // CS idle high
+}
+
+/**
  * @brief Initialize SPI bus and device
  */
 esp_err_t epd_spi_init(void)
 {
     ESP_LOGI(TAG, "Initializing SPI bus");
+
+    // Initialize CS GPIO for manual control
+    epd_cs_gpio_init();
 
     // SPI bus configuration
     spi_bus_config_t bus_cfg = {
@@ -47,7 +66,7 @@ esp_err_t epd_spi_init(void)
         .sclk_io_num = EPD_PIN_SCK,
         .quadwp_io_num = -1,
         .quadhd_io_num = -1,
-        .max_transfer_sz = DMA_BUFFER_SIZE,
+        .max_transfer_sz = EPD_WIDTH * EPD_HEIGHT,  // Match reference project
     };
 
     // Initialize SPI bus
@@ -57,13 +76,13 @@ esp_err_t epd_spi_init(void)
         return ret;
     }
 
-    // SPI device configuration
+    // SPI device configuration - manual CS control, half-duplex mode
     spi_device_interface_config_t dev_cfg = {
         .clock_speed_hz = EPD_SPI_CLOCK_HZ,
         .mode = 0,  // SPI Mode 0 (CPOL=0, CPHA=0)
-        .spics_io_num = EPD_PIN_CS,
-        .queue_size = 1,
-        .flags = 0,
+        .spics_io_num = -1,  // Manual CS control
+        .queue_size = 7,
+        .flags = SPI_DEVICE_HALFDUPLEX,
     };
 
     // Add SPI device
@@ -107,11 +126,12 @@ void epd_spi_deinit(void)
 }
 
 /**
- * @brief Send command byte to display
+ * @brief Send command byte to display (with manual CS control)
  */
 void epd_spi_send_command(uint8_t cmd)
 {
     gpio_set_level(EPD_PIN_DC, 0);  // Command mode
+    gpio_set_level(EPD_PIN_CS, 0);  // CS active
 
     spi_transaction_t trans = {
         .length = 8,
@@ -119,14 +139,17 @@ void epd_spi_send_command(uint8_t cmd)
     };
 
     spi_device_polling_transmit(s_spi_handle, &trans);
+
+    gpio_set_level(EPD_PIN_CS, 1);  // CS idle
 }
 
 /**
- * @brief Send data byte to display
+ * @brief Send data byte to display (with manual CS control)
  */
 void epd_spi_send_data(uint8_t data)
 {
     gpio_set_level(EPD_PIN_DC, 1);  // Data mode
+    gpio_set_level(EPD_PIN_CS, 0);  // CS active
 
     spi_transaction_t trans = {
         .length = 8,
@@ -134,27 +157,29 @@ void epd_spi_send_data(uint8_t data)
     };
 
     spi_device_polling_transmit(s_spi_handle, &trans);
+
+    gpio_set_level(EPD_PIN_CS, 1);  // CS idle
 }
 
 /**
- * @brief Send multiple data bytes to display using DMA
+ * @brief Send multiple data bytes to display using chunked transfers
+ * Uses the same chunking strategy as the reference project (5000 bytes per chunk)
  */
 void epd_spi_send_data_burst(const uint8_t *data, size_t len)
 {
     gpio_set_level(EPD_PIN_DC, 1);  // Data mode
+    gpio_set_level(EPD_PIN_CS, 0);  // CS active
 
     size_t remaining = len;
     const uint8_t *ptr = data;
+    const size_t CHUNK_SIZE = 5000;  // Match reference project
 
     while (remaining > 0) {
-        size_t chunk = (remaining > DMA_BUFFER_SIZE) ? DMA_BUFFER_SIZE : remaining;
-
-        // Copy to DMA buffer
-        memcpy(s_dma_buffer, ptr, chunk);
+        size_t chunk = (remaining > CHUNK_SIZE) ? CHUNK_SIZE : remaining;
 
         spi_transaction_t trans = {
             .length = chunk * 8,
-            .tx_buffer = s_dma_buffer,
+            .tx_buffer = ptr,
         };
 
         spi_device_polling_transmit(s_spi_handle, &trans);
@@ -162,6 +187,8 @@ void epd_spi_send_data_burst(const uint8_t *data, size_t len)
         ptr += chunk;
         remaining -= chunk;
     }
+
+    gpio_set_level(EPD_PIN_CS, 1);  // CS idle
 }
 
 /**

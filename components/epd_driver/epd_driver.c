@@ -28,9 +28,12 @@ static const char *TAG = "epd_driver";
 #define CMD_PANEL_SETTING        0x00
 #define CMD_POWER_SETTING        0x01
 #define CMD_POWER_OFF            0x02
+#define CMD_POWER_OFF_SEQ        0x03
 #define CMD_POWER_ON             0x04
+#define CMD_POWER_ON_MEASURE     0x05
 #define CMD_BOOSTER_SOFT_START   0x06
 #define CMD_DEEP_SLEEP           0x07
+#define CMD_DTM1                 0x08
 #define CMD_DATA_START_TRANS     0x10
 #define CMD_DISPLAY_REFRESH      0x12
 #define CMD_PLL_CONTROL          0x30
@@ -40,7 +43,9 @@ static const char *TAG = "epd_driver";
 #define CMD_RESOLUTION_SETTING   0x61
 #define CMD_GET_STATUS           0x71
 #define CMD_VCOM_DC              0x82
-#define CMD_FLASH_MODE           0xE5
+#define CMD_PARTIAL_IN           0x84
+#define CMD_CMDH                 0xAA
+#define CMD_CASCADE              0xE3
 
 // External SPI functions
 extern esp_err_t epd_spi_init(void);
@@ -80,12 +85,12 @@ static esp_err_t epd_gpio_init(void)
     };
     gpio_config(&rst_conf);
 
-    // Configure BUSY pin (input)
+    // Configure BUSY pin (input with pull-down, matching reference project)
     gpio_config_t busy_conf = {
         .pin_bit_mask = (1ULL << EPD_PIN_BUSY),
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&busy_conf);
@@ -98,81 +103,129 @@ static esp_err_t epd_gpio_init(void)
 }
 
 /**
- * @brief Wait for BUSY pin to go low (display ready)
+ * @brief Wait for BUSY pin to go HIGH (display ready)
+ * Note: Waveshare 7.3inch 7-color e-Paper uses BUSY=HIGH as ready signal
  */
 static esp_err_t epd_wait_busy(uint32_t timeout_ms)
 {
-    ESP_LOGD(TAG, "Waiting for BUSY pin...");
+    int initial_level = gpio_get_level(EPD_PIN_BUSY);
+    ESP_LOGI(TAG, "Waiting for BUSY HIGH (current=%d, timeout=%lums)", initial_level, timeout_ms);
 
     TickType_t start = xTaskGetTickCount();
     TickType_t timeout_ticks = pdMS_TO_TICKS(timeout_ms);
 
-    while (gpio_get_level(EPD_PIN_BUSY) == 1) {
+    while (gpio_get_level(EPD_PIN_BUSY) == 0) {
         if ((xTaskGetTickCount() - start) > timeout_ticks) {
-            ESP_LOGE(TAG, "BUSY timeout after %lu ms", timeout_ms);
+            ESP_LOGE(TAG, "BUSY timeout after %lu ms (still LOW)", timeout_ms);
             return ESP_ERR_TIMEOUT;
         }
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
-    ESP_LOGD(TAG, "BUSY released after %lu ms",
-             (xTaskGetTickCount() - start) * portTICK_PERIOD_MS);
+    uint32_t elapsed = (xTaskGetTickCount() - start) * portTICK_PERIOD_MS;
+    ESP_LOGI(TAG, "BUSY HIGH after %lu ms", elapsed);
     return ESP_OK;
 }
 
 /**
- * @brief Hardware reset sequence
+ * @brief Hardware reset sequence (matching reference project timing)
  */
 static void epd_hw_reset(void)
 {
     ESP_LOGI(TAG, "Performing hardware reset");
 
     gpio_set_level(EPD_PIN_RST, 1);
-    vTaskDelay(pdMS_TO_TICKS(EPD_RESET_DELAY_MS));
+    vTaskDelay(pdMS_TO_TICKS(50));
     gpio_set_level(EPD_PIN_RST, 0);
-    vTaskDelay(pdMS_TO_TICKS(2));
+    vTaskDelay(pdMS_TO_TICKS(20));
     gpio_set_level(EPD_PIN_RST, 1);
-    vTaskDelay(pdMS_TO_TICKS(EPD_RESET_DELAY_MS));
+    vTaskDelay(pdMS_TO_TICKS(50));
 }
 
 /**
- * @brief Send display initialization sequence
+ * @brief Send display initialization sequence (matching reference project)
  */
 static void epd_init_sequence(void)
 {
     ESP_LOGI(TAG, "Sending initialization sequence");
 
-    // Power setting
-    epd_spi_send_command(CMD_POWER_SETTING);
-    epd_spi_send_data(0x07);
-    epd_spi_send_data(0x07);
-    epd_spi_send_data(0x3F);
-    epd_spi_send_data(0x3F);
+    // CMDH - Command header
+    epd_spi_send_command(CMD_CMDH);  // 0xAA
+    epd_spi_send_data(0x49);
+    epd_spi_send_data(0x55);
+    epd_spi_send_data(0x20);
+    epd_spi_send_data(0x08);
+    epd_spi_send_data(0x09);
+    epd_spi_send_data(0x18);
 
-    // Power on
-    epd_spi_send_command(CMD_POWER_ON);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    epd_wait_busy(5000);
+    // Power setting
+    epd_spi_send_command(CMD_POWER_SETTING);  // 0x01
+    epd_spi_send_data(0x3F);
 
     // Panel setting
-    epd_spi_send_command(CMD_PANEL_SETTING);
-    epd_spi_send_data(0x0F);  // KW-3f, KWR-2F, BWROTP 0f, BWOTP 1f
+    epd_spi_send_command(CMD_PANEL_SETTING);  // 0x00
+    epd_spi_send_data(0x5F);
+    epd_spi_send_data(0x69);
+
+    // Power off sequence setting
+    epd_spi_send_command(CMD_POWER_OFF_SEQ);  // 0x03
+    epd_spi_send_data(0x00);
+    epd_spi_send_data(0x54);
+    epd_spi_send_data(0x00);
+    epd_spi_send_data(0x44);
+
+    // Power on measure
+    epd_spi_send_command(CMD_POWER_ON_MEASURE);  // 0x05
+    epd_spi_send_data(0x40);
+    epd_spi_send_data(0x1F);
+    epd_spi_send_data(0x1F);
+    epd_spi_send_data(0x2C);
+
+    // Booster soft start
+    epd_spi_send_command(CMD_BOOSTER_SOFT_START);  // 0x06
+    epd_spi_send_data(0x6F);
+    epd_spi_send_data(0x1F);
+    epd_spi_send_data(0x17);
+    epd_spi_send_data(0x49);
+
+    // DTM1
+    epd_spi_send_command(CMD_DTM1);  // 0x08
+    epd_spi_send_data(0x6F);
+    epd_spi_send_data(0x1F);
+    epd_spi_send_data(0x1F);
+    epd_spi_send_data(0x22);
+
+    // PLL control
+    epd_spi_send_command(CMD_PLL_CONTROL);  // 0x30
+    epd_spi_send_data(0x03);
+
+    // VCOM and data interval setting
+    epd_spi_send_command(CMD_VCOM_INTERVAL);  // 0x50
+    epd_spi_send_data(0x3F);
+
+    // TCON setting
+    epd_spi_send_command(CMD_TCON_SETTING);  // 0x60
+    epd_spi_send_data(0x02);
+    epd_spi_send_data(0x00);
 
     // Resolution setting: 800x480
-    epd_spi_send_command(CMD_RESOLUTION_SETTING);
+    epd_spi_send_command(CMD_RESOLUTION_SETTING);  // 0x61
     epd_spi_send_data(0x03);  // 800 >> 8
     epd_spi_send_data(0x20);  // 800 & 0xFF
     epd_spi_send_data(0x01);  // 480 >> 8
     epd_spi_send_data(0xE0);  // 480 & 0xFF
 
-    // VCOM and data interval setting
-    epd_spi_send_command(CMD_VCOM_INTERVAL);
-    epd_spi_send_data(0x11);
-    epd_spi_send_data(0x07);
+    // Partial in
+    epd_spi_send_command(CMD_PARTIAL_IN);  // 0x84
+    epd_spi_send_data(0x01);
 
-    // TCON setting
-    epd_spi_send_command(CMD_TCON_SETTING);
-    epd_spi_send_data(0x22);
+    // Cascade setting
+    epd_spi_send_command(CMD_CASCADE);  // 0xE3
+    epd_spi_send_data(0x2F);
+
+    // Power on
+    epd_spi_send_command(CMD_POWER_ON);  // 0x04
+    epd_wait_busy(5000);
 
     ESP_LOGI(TAG, "Initialization sequence complete");
 }
@@ -211,8 +264,10 @@ esp_err_t epd_driver_init(void)
     // Clear framebuffer to white
     memset(s_framebuffer, 0x11, EPD_BUFFER_SIZE);  // 0x11 = white|white
 
-    // Hardware reset and initialization
+    // Hardware reset and initialization (matching reference project)
     epd_hw_reset();
+    epd_wait_busy(5000);  // Wait for BUSY HIGH after reset
+    vTaskDelay(pdMS_TO_TICKS(50));
     epd_init_sequence();
 
     s_initialized = true;
@@ -246,29 +301,60 @@ esp_err_t epd_driver_clear(epd_color_t color)
 }
 
 /**
- * @brief Internal refresh function (single attempt)
+ * @brief Internal refresh function (single attempt, matching reference project)
  */
 static esp_err_t epd_refresh_internal(void)
 {
-    // Start data transmission
+    ESP_LOGI(TAG, "Sending data transmission command (0x10)");
+    // Start data transmission (0x10)
     epd_spi_send_command(CMD_DATA_START_TRANS);
 
+    ESP_LOGI(TAG, "Sending framebuffer (%d bytes)", EPD_BUFFER_SIZE);
     // Send framebuffer (4bpp packed)
     epd_spi_send_data_burst(s_framebuffer, EPD_BUFFER_SIZE);
 
-    // Trigger refresh
+    ESP_LOGI(TAG, "Sending POWER_ON command (0x04)");
+    // Power on (0x04)
     epd_spi_send_command(CMD_POWER_ON);
     esp_err_t ret = epd_wait_busy(5000);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "POWER_ON busy timeout");
         return ret;
     }
 
-    epd_spi_send_command(CMD_DISPLAY_REFRESH);
-    vTaskDelay(pdMS_TO_TICKS(100));
+    ESP_LOGI(TAG, "Sending BOOSTER_SOFT_START (0x06)");
+    // Booster soft start - second setting (0x06)
+    epd_spi_send_command(CMD_BOOSTER_SOFT_START);
+    epd_spi_send_data(0x6F);
+    epd_spi_send_data(0x1F);
+    epd_spi_send_data(0x17);
+    epd_spi_send_data(0x49);
 
+    ESP_LOGI(TAG, "Sending DISPLAY_REFRESH (0x12)");
+    // Display refresh (0x12)
+    epd_spi_send_command(CMD_DISPLAY_REFRESH);
+    epd_spi_send_data(0x00);
+
+    ESP_LOGI(TAG, "Waiting for refresh complete (up to %d ms)...", EPD_BUSY_TIMEOUT_MS);
     // Wait for refresh to complete
     ret = epd_wait_busy(EPD_BUSY_TIMEOUT_MS);
-    return ret;
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "DISPLAY_REFRESH busy timeout");
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "Sending POWER_OFF (0x02)");
+    // Power off (0x02)
+    epd_spi_send_command(CMD_POWER_OFF);
+    epd_spi_send_data(0x00);
+    ret = epd_wait_busy(5000);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "POWER_OFF busy timeout");
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "Refresh internal complete");
+    return ESP_OK;
 }
 
 esp_err_t epd_driver_refresh(void)
