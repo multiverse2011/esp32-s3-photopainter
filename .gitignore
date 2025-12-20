@@ -1,0 +1,25 @@
+# ESP-IDF build output
+/build/
+/build_*/
+/cmake-build-*/
+/managed_components/
+
+# ESP-IDF config backups
+/sdkconfig.old
+/sdkconfig.bak
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# Virtual environments
+.venv/
+venv/
+
+# OS junk
+.DS_Store
+Thumbs.db
