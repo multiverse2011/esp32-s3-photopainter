@@ -22,25 +22,25 @@
 
 ---
 
-## Phase 1: Setup (Project Infrastructure)
+## Phase 1: Setup (Project Infrastructure) ✅ COMPLETE
 
 **Purpose**: ESP-IDF project initialization and component structure
 
-- [ ] T001 Update root CMakeLists.txt to remove MINIMAL_BUILD and add components in CMakeLists.txt
-- [ ] T002 [P] Create sdkconfig.defaults with PSRAM, WiFi, HTTPS settings
-- [ ] T003 [P] Create partitions.csv with NVS and application partitions
-- [ ] T004 [P] Create main/Kconfig.projbuild with WiFi and API configuration options
-- [ ] T005 Create components/wifi_manager/ directory structure with CMakeLists.txt
-- [ ] T006 [P] Create components/epd_driver/ directory structure with CMakeLists.txt
-- [ ] T007 [P] Create components/gfx_library/ directory structure with CMakeLists.txt
-- [ ] T008 [P] Create components/weather_service/ directory structure with CMakeLists.txt
-- [ ] T009 [P] Create components/calendar_ui/ directory structure with CMakeLists.txt
+- [X] T001 Update root CMakeLists.txt to remove MINIMAL_BUILD and add components in CMakeLists.txt
+- [X] T002 [P] Create sdkconfig.defaults with PSRAM, WiFi, HTTPS settings
+- [X] T003 [P] Create partitions.csv with NVS and application partitions
+- [X] T004 [P] Create main/Kconfig.projbuild with WiFi and API configuration options
+- [X] T005 Create components/wifi_manager/ directory structure with CMakeLists.txt
+- [X] T006 [P] Create components/epd_driver/ directory structure with CMakeLists.txt
+- [X] T007 [P] Create components/gfx_library/ directory structure with CMakeLists.txt
+- [X] T008 [P] Create components/weather_service/ directory structure with CMakeLists.txt
+- [X] T009 [P] Create components/calendar_ui/ directory structure with CMakeLists.txt
 
 **Checkpoint**: Project compiles with empty component stubs
 
 ---
 
-## Phase 2: Foundational (Core Components)
+## Phase 2: Foundational (Core Components) ✅ COMPLETE
 
 **Purpose**: Low-level drivers and libraries that MUST be complete before ANY user story can be implemented
 
@@ -48,42 +48,42 @@
 
 ### WiFi Manager Component
 
-- [ ] T010 Create components/wifi_manager/include/wifi_manager.h with API declarations
-- [ ] T011 Implement WiFi initialization in components/wifi_manager/wifi_manager.c
-- [ ] T012 Implement WiFi connection with timeout in components/wifi_manager/wifi_manager.c
-- [ ] T013 Implement SNTP time synchronization in components/wifi_manager/wifi_manager.c
-- [ ] T014 Implement WiFi disconnect and cleanup in components/wifi_manager/wifi_manager.c
+- [X] T010 Create components/wifi_manager/include/wifi_manager.h with API declarations
+- [X] T011 Implement WiFi initialization in components/wifi_manager/wifi_manager.c
+- [X] T012 Implement WiFi connection with timeout in components/wifi_manager/wifi_manager.c
+- [X] T013 Implement SNTP time synchronization in components/wifi_manager/wifi_manager.c
+- [X] T014 Implement WiFi disconnect and cleanup in components/wifi_manager/wifi_manager.c
 
 ### EPD Driver Component
 
-- [ ] T015 [P] Create components/epd_driver/include/epd_driver.h with API declarations and color enum
-- [ ] T016 Implement SPI initialization in components/epd_driver/epd_spi.c
-- [ ] T017 Implement GPIO configuration (DC, CS, RST, BUSY) in components/epd_driver/epd_driver.c
-- [ ] T018 Implement display initialization sequence in components/epd_driver/epd_driver.c
-- [ ] T019 Implement PSRAM framebuffer allocation in components/epd_driver/epd_driver.c
-- [ ] T020 Implement buffer-to-display transfer with DMA in components/epd_driver/epd_spi.c
-- [ ] T021 Implement display refresh with BUSY wait in components/epd_driver/epd_driver.c
-- [ ] T022 Implement display sleep mode in components/epd_driver/epd_driver.c
-- [ ] T023 Implement hardware reset function in components/epd_driver/epd_driver.c
+- [X] T015 [P] Create components/epd_driver/include/epd_driver.h with API declarations and color enum
+- [X] T016 Implement SPI initialization in components/epd_driver/epd_spi.c
+- [X] T017 Implement GPIO configuration (DC, CS, RST, BUSY) in components/epd_driver/epd_driver.c
+- [X] T018 Implement display initialization sequence in components/epd_driver/epd_driver.c
+- [X] T019 Implement PSRAM framebuffer allocation in components/epd_driver/epd_driver.c
+- [X] T020 Implement buffer-to-display transfer with DMA in components/epd_driver/epd_spi.c
+- [X] T021 Implement display refresh with BUSY wait in components/epd_driver/epd_driver.c
+- [X] T022 Implement display sleep mode in components/epd_driver/epd_driver.c
+- [X] T023 Implement hardware reset function in components/epd_driver/epd_driver.c
 
 ### Graphics Library Component
 
-- [ ] T024 [P] Create components/gfx_library/include/gfx_paint.h with drawing API declarations
-- [ ] T025 Implement gfx_init and set_pixel in components/gfx_library/gfx_paint.c
-- [ ] T026 Implement line drawing (Bresenham) in components/gfx_library/gfx_primitives.c
-- [ ] T027 Implement rectangle drawing (outline/filled) in components/gfx_library/gfx_primitives.c
-- [ ] T028 Implement circle drawing (Midpoint) in components/gfx_library/gfx_primitives.c
-- [ ] T029 [P] Create 16px bitmap font data in components/gfx_library/fonts/font_16.c
-- [ ] T030 [P] Create 24px bitmap font data in components/gfx_library/fonts/font_24.c
-- [ ] T031 [P] Create 32px bitmap font data in components/gfx_library/fonts/font_32.c
-- [ ] T032 Implement character and string drawing in components/gfx_library/gfx_paint.c
-- [ ] T033 Implement text alignment utilities in components/gfx_library/gfx_paint.c
+- [X] T024 [P] Create components/gfx_library/include/gfx_paint.h with drawing API declarations
+- [X] T025 Implement gfx_init and set_pixel in components/gfx_library/gfx_paint.c
+- [X] T026 Implement line drawing (Bresenham) in components/gfx_library/gfx_primitives.c
+- [X] T027 Implement rectangle drawing (outline/filled) in components/gfx_library/gfx_primitives.c
+- [X] T028 Implement circle drawing (Midpoint) in components/gfx_library/gfx_primitives.c
+- [X] T029 [P] Create 16px bitmap font data in components/gfx_library/fonts/font_16.c
+- [X] T030 [P] Create 24px bitmap font data in components/gfx_library/fonts/font_24.c
+- [X] T031 [P] Create 32px bitmap font data in components/gfx_library/fonts/font_32.c
+- [X] T032 Implement character and string drawing in components/gfx_library/gfx_paint.c
+- [X] T033 Implement text alignment utilities in components/gfx_library/gfx_paint.c
 
 **Checkpoint**: Foundation ready - display shows solid colors and basic text
 
 ---
 
-## Phase 3: User Story 1 - 天気情報の確認 (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - 天気情報の確認 (Priority: P1) 🎯 MVP ✅ COMPLETE
 
 **Goal**: Display 4-day weather forecast with icons, temperatures, humidity, and wind
 
@@ -91,36 +91,36 @@
 
 ### Weather Service Component (US1)
 
-- [ ] T034 [P] [US1] Create components/weather_service/include/weather_types.h with forecast structures
-- [ ] T035 [P] [US1] Create components/weather_service/include/weather_service.h with API declarations
-- [ ] T036 [US1] Implement HTTPS client for OpenWeatherMap in components/weather_service/weather_http.c
-- [ ] T037 [US1] Implement JSON parsing with cJSON in components/weather_service/weather_parser.c
-- [ ] T038 [US1] Implement noon data extraction (4 days) in components/weather_service/weather_parser.c
-- [ ] T039 [US1] Implement weather_service_fetch() combining HTTP and parsing in components/weather_service/weather_http.c
+- [X] T034 [P] [US1] Create components/weather_service/include/weather_types.h with forecast structures
+- [X] T035 [P] [US1] Create components/weather_service/include/weather_service.h with API declarations
+- [X] T036 [US1] Implement HTTPS client for OpenWeatherMap in components/weather_service/weather_http.c
+- [X] T037 [US1] Implement JSON parsing with cJSON in components/weather_service/weather_parser.c
+- [X] T038 [US1] Implement noon data extraction (4 days) in components/weather_service/weather_parser.c
+- [X] T039 [US1] Implement weather_service_fetch() combining HTTP and parsing in components/weather_service/weather_http.c
 
 ### Calendar UI Component (US1)
 
-- [ ] T040 [P] [US1] Create components/calendar_ui/include/calendar_ui.h with UI API declarations
-- [ ] T041 [US1] Implement sun icon drawing in components/calendar_ui/weather_icons.c
-- [ ] T042 [US1] Implement cloud icon drawing in components/calendar_ui/weather_icons.c
-- [ ] T043 [US1] Implement rain icon drawing in components/calendar_ui/weather_icons.c
-- [ ] T044 [US1] Implement additional icons (snow, thunder, fog) in components/calendar_ui/weather_icons.c
-- [ ] T045 [US1] Implement icon code to drawing function mapping in components/calendar_ui/weather_icons.c
-- [ ] T046 [US1] Implement forecast column layout (200px each) in components/calendar_ui/calendar_ui.c
-- [ ] T047 [US1] Implement temperature display with colors in components/calendar_ui/calendar_ui.c
-- [ ] T048 [US1] Implement humidity and wind display in components/calendar_ui/calendar_ui.c
-- [ ] T049 [US1] Implement calendar_ui_draw_forecast() for single day in components/calendar_ui/calendar_ui.c
-- [ ] T050 [US1] Implement full screen layout with 4 forecast columns in components/calendar_ui/calendar_ui.c
+- [X] T040 [P] [US1] Create components/calendar_ui/include/calendar_ui.h with UI API declarations
+- [X] T041 [US1] Implement sun icon drawing in components/calendar_ui/weather_icons.c
+- [X] T042 [US1] Implement cloud icon drawing in components/calendar_ui/weather_icons.c
+- [X] T043 [US1] Implement rain icon drawing in components/calendar_ui/weather_icons.c
+- [X] T044 [US1] Implement additional icons (snow, thunder, fog) in components/calendar_ui/weather_icons.c
+- [X] T045 [US1] Implement icon code to drawing function mapping in components/calendar_ui/weather_icons.c
+- [X] T046 [US1] Implement forecast column layout (200px each) in components/calendar_ui/calendar_ui.c
+- [X] T047 [US1] Implement temperature display with colors in components/calendar_ui/calendar_ui.c
+- [X] T048 [US1] Implement humidity and wind display in components/calendar_ui/calendar_ui.c
+- [X] T049 [US1] Implement calendar_ui_draw_forecast() for single day in components/calendar_ui/calendar_ui.c
+- [X] T050 [US1] Implement full screen layout with 4 forecast columns in components/calendar_ui/calendar_ui.c
 
 ### Main Application Integration (US1)
 
-- [ ] T051 [US1] Implement basic app_main() flow in main/main.c: init → wifi → fetch → draw → refresh
+- [X] T051 [US1] Implement basic app_main() flow in main/main.c: init → wifi → fetch → draw → refresh
 
 **Checkpoint**: Device displays 4-day weather forecast - MVP complete!
 
 ---
 
-## Phase 4: User Story 2 - 現在日時の確認 (Priority: P1)
+## Phase 4: User Story 2 - 現在日時の確認 (Priority: P1) ✅ COMPLETE
 
 **Goal**: Display current date and time in header area
 
@@ -128,20 +128,20 @@
 
 ### Graphics Extensions (US2)
 
-- [ ] T052 [US2] Implement time formatting (HH:MM) in components/gfx_library/gfx_paint.c
-- [ ] T053 [US2] Implement date formatting (MM/DD, weekday) in components/gfx_library/gfx_paint.c
+- [X] T052 [US2] Implement time formatting (HH:MM) in components/gfx_library/gfx_paint.c
+- [X] T053 [US2] Implement date formatting (MM/DD, weekday) in components/gfx_library/gfx_paint.c
 
 ### Calendar UI Header (US2)
 
-- [ ] T054 [US2] Implement header layout (0-80px top) in components/calendar_ui/calendar_ui.c
-- [ ] T055 [US2] Implement calendar_ui_draw_header() with date/time in components/calendar_ui/calendar_ui.c
-- [ ] T056 [US2] Integrate header into full calendar_ui_draw() in components/calendar_ui/calendar_ui.c
+- [X] T054 [US2] Implement header layout (0-80px top) in components/calendar_ui/calendar_ui.c
+- [X] T055 [US2] Implement calendar_ui_draw_header() with date/time in components/calendar_ui/calendar_ui.c
+- [X] T056 [US2] Integrate header into full calendar_ui_draw() in components/calendar_ui/calendar_ui.c
 
 **Checkpoint**: Device shows date/time in header + 4-day forecast
 
 ---
 
-## Phase 5: User Story 3 - 省電力での長期動作 (Priority: P2)
+## Phase 5: User Story 3 - 省電力での長期動作 (Priority: P2) ✅ COMPLETE
 
 **Goal**: Implement deep sleep for battery operation
 
@@ -149,30 +149,30 @@
 
 ### Power Management (US3)
 
-- [ ] T057 [US3] Implement RTC memory cache structure (RTC_DATA_ATTR) in main/main.c
-- [ ] T058 [US3] Implement deep sleep timer configuration in main/main.c
-- [ ] T059 [US3] Implement time-of-day based interval selection (30min/2hr) in main/main.c
-- [ ] T060 [US3] Implement boot reason detection in main/main.c
-- [ ] T061 [US3] Implement RTC cache save before sleep in main/main.c
-- [ ] T062 [US3] Implement RTC cache load on wake in main/main.c
+- [X] T057 [US3] Implement RTC memory cache structure (RTC_DATA_ATTR) in main/main.c
+- [X] T058 [US3] Implement deep sleep timer configuration in main/main.c
+- [X] T059 [US3] Implement time-of-day based interval selection (30min/2hr) in main/main.c
+- [X] T060 [US3] Implement boot reason detection in main/main.c
+- [X] T061 [US3] Implement RTC cache save before sleep in main/main.c
+- [X] T062 [US3] Implement RTC cache load on wake in main/main.c
 
 ### API Call Throttling (US3)
 
-- [ ] T063 [US3] Implement last_api_call tracking in RTC memory in main/main.c
-- [ ] T064 [US3] Implement 3-hour API call throttle logic in main/main.c
-- [ ] T065 [US3] Skip API call when cache is fresh (< 3 hours) in main/main.c
+- [X] T063 [US3] Implement last_api_call tracking in RTC memory in main/main.c
+- [X] T064 [US3] Implement 3-hour API call throttle logic in main/main.c
+- [X] T065 [US3] Skip API call when cache is fresh (< 3 hours) in main/main.c
 
 ### Resource Cleanup (US3)
 
-- [ ] T066 [US3] Implement proper WiFi disconnect before sleep in main/main.c
-- [ ] T067 [US3] Implement display sleep command before deep sleep in main/main.c
-- [ ] T068 [US3] Implement SPI deinit before deep sleep in main/main.c
+- [X] T066 [US3] Implement proper WiFi disconnect before sleep in main/main.c
+- [X] T067 [US3] Implement display sleep command before deep sleep in main/main.c
+- [X] T068 [US3] Implement SPI deinit before deep sleep in main/main.c
 
 **Checkpoint**: Device operates in power-efficient wake-sleep cycle
 
 ---
 
-## Phase 6: User Story 4 - オフライン時のフォールバック (Priority: P3)
+## Phase 6: User Story 4 - オフライン時のフォールバック (Priority: P3) ✅ COMPLETE
 
 **Goal**: Cache weather data and fallback when offline
 
@@ -180,56 +180,56 @@
 
 ### NVS Cache (US4)
 
-- [ ] T069 [US4] Implement NVS namespace for weather cache in components/weather_service/weather_http.c
-- [ ] T070 [US4] Implement weather_service_save_cache() in components/weather_service/weather_http.c
-- [ ] T071 [US4] Implement weather_service_load_cache() in components/weather_service/weather_http.c
-- [ ] T072 [US4] Implement weather_service_cache_valid() with 24h expiry in components/weather_service/weather_http.c
+- [X] T069 [US4] Implement NVS namespace for weather cache in components/weather_service/weather_http.c
+- [X] T070 [US4] Implement weather_service_save_cache() in components/weather_service/weather_http.c
+- [X] T071 [US4] Implement weather_service_load_cache() in components/weather_service/weather_http.c
+- [X] T072 [US4] Implement weather_service_cache_valid() with 24h expiry in components/weather_service/weather_http.c
 
 ### Error Handling (US4)
 
-- [ ] T073 [US4] Implement WiFi connection retry (3 attempts) in components/wifi_manager/wifi_manager.c
-- [ ] T074 [US4] Implement HTTP request retry with exponential backoff in components/weather_service/weather_http.c
-- [ ] T075 [US4] Implement cache fallback on fetch failure in main/main.c
+- [X] T073 [US4] Implement WiFi connection retry (3 attempts) in components/wifi_manager/wifi_manager.c
+- [X] T074 [US4] Implement HTTP request retry with exponential backoff in components/weather_service/weather_http.c
+- [X] T075 [US4] Implement cache fallback on fetch failure in main/main.c
 
 ### Error Display (US4)
 
-- [ ] T076 [US4] Implement calendar_ui_draw_error() screen in components/calendar_ui/calendar_ui.c
-- [ ] T077 [US4] Implement cache staleness indicator in header in components/calendar_ui/calendar_ui.c
-- [ ] T078 [US4] Implement last update timestamp display in components/calendar_ui/calendar_ui.c
+- [X] T076 [US4] Implement calendar_ui_draw_error() screen in components/calendar_ui/calendar_ui.c
+- [X] T077 [US4] Implement cache staleness indicator in header in components/calendar_ui/calendar_ui.c
+- [X] T078 [US4] Implement last update timestamp display in components/calendar_ui/calendar_ui.c
 
 ### State Machine (US4)
 
-- [ ] T079 [US4] Implement app_state_t enum and state machine in main/main.c
-- [ ] T080 [US4] Implement STATE_ERROR handling with error screen in main/main.c
+- [X] T079 [US4] Implement app_state_t enum and state machine in main/main.c
+- [X] T080 [US4] Implement STATE_ERROR handling with error screen in main/main.c
 
 **Checkpoint**: Device handles network failures gracefully with cached data
 
 ---
 
-## Phase 7: Polish & Robustness
+## Phase 7: Polish & Robustness ✅ COMPLETE
 
 **Purpose**: Improvements that affect multiple user stories
 
 ### Display Robustness
 
-- [ ] T081 Implement BUSY timeout detection (20s) in components/epd_driver/epd_driver.c
-- [ ] T082 Implement auto-reset on BUSY timeout in components/epd_driver/epd_driver.c
+- [X] T081 Implement BUSY timeout detection (20s) in components/epd_driver/epd_driver.c
+- [X] T082 Implement auto-reset on BUSY timeout in components/epd_driver/epd_driver.c
 
 ### Memory Safety
 
-- [ ] T083 Add NULL pointer checks throughout all components
-- [ ] T084 Implement heap usage monitoring with ESP_LOG in main/main.c
-- [ ] T085 Add buffer bounds checking in graphics library in components/gfx_library/gfx_paint.c
+- [X] T083 Add NULL pointer checks throughout all components
+- [X] T084 Implement heap usage monitoring with ESP_LOG in main/main.c
+- [X] T085 Add buffer bounds checking in graphics library in components/gfx_library/gfx_paint.c
 
 ### Logging
 
-- [ ] T086 Add comprehensive ESP_LOG statements in all components
-- [ ] T087 Implement boot time and operation timing logs in main/main.c
+- [X] T086 Add comprehensive ESP_LOG statements in all components
+- [X] T087 Implement boot time and operation timing logs in main/main.c
 
 ### Documentation
 
-- [ ] T088 Update README.md with setup instructions
-- [ ] T089 Validate quickstart.md scenarios work as documented
+- [X] T088 Update README.md with setup instructions
+- [X] T089 Validate quickstart.md scenarios work as documented
 
 ---
 
