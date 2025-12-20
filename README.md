@@ -1,14 +1,18 @@
 # ESP32-S3 E-ink Weather Calendar
 
-A battery-powered weather calendar display using ESP32-S3 and a Waveshare 7.3-inch 7-color E-Paper display. Shows a 4-day weather forecast with current date/time, optimized for low power consumption.
+A battery-powered smart display using ESP32-S3 and a Waveshare 7.3-inch 7-color E-Paper display. Shows weather forecast, task list, and train status with current date/time, optimized for low power consumption.
 
 ## Features
 
 - **4-Day Weather Forecast**: Displays weather icons, temperatures, humidity, and wind information
+- **Hourly Weather**: Shows 5-hour forecast with temperature and weather conditions
+- **Task List**: Displays up to 5 tasks from external API
+- **Train Status**: Shows train line delay status (JR East)
 - **Current Date/Time**: Header shows current date and time with SNTP synchronization
 - **Power Efficient**: Deep sleep mode with configurable wake intervals (30min day / 2hr night)
-- **Offline Support**: Caches weather data for up to 24 hours when network is unavailable
+- **Offline Support**: Caches weather/task/train data when network is unavailable
 - **API Throttling**: Rate-limits OpenWeatherMap API calls to every 3 hours
+- **Power Management**: AXP2101 power management with charging status monitoring
 
 ## Hardware Requirements
 
@@ -66,13 +70,15 @@ idf.py -p /dev/ttyUSB0 monitor
 
 ### 3. Expected Behavior
 
-1. Device powers on and initializes components
+1. Device powers on and initializes components (including AXP2101 power management)
 2. Connects to WiFi network
 3. Synchronizes time via SNTP
-4. Fetches weather data from OpenWeatherMap
-5. Renders and displays 4-day forecast
+4. Fetches data from APIs (weather, tasks, train status)
+5. Renders and displays all information on E-Paper
 6. Enters deep sleep for configured interval
 7. Wakes up and repeats from step 2
+
+**Note**: Task and train services are optional - the device will continue to operate with graceful degradation if these services are unavailable.
 
 ## Configuration Options
 
@@ -102,7 +108,12 @@ esp32-s3-photopainter/
 │   ├── epd_driver/         # E-Paper display driver
 │   ├── gfx_library/        # Graphics primitives and fonts
 │   ├── weather_service/    # OpenWeatherMap API client
-│   └── calendar_ui/        # UI layout and weather icons
+│   ├── task_service/       # Task list API client
+│   ├── train_service/      # Train status API client (JR East)
+│   ├── calendar_ui/        # UI layout and weather icons
+│   ├── axpPower/           # AXP2101 power management
+│   ├── i2c_bsp/            # I2C driver
+│   └── epaper_port/        # E-Paper porting layer
 ├── sdkconfig.defaults      # Default ESP-IDF settings
 ├── partitions.csv          # Partition table
 └── CMakeLists.txt          # Project configuration
@@ -129,6 +140,11 @@ esp32-s3-photopainter/
 - Device is using previously fetched weather data
 - This is normal if network is unavailable or API is throttled
 - Data remains valid for 24 hours
+
+### Task/Train Data Not Showing
+- These services are optional and will gracefully degrade
+- Check API endpoint configuration
+- Device will continue operating with only weather data
 
 ## Power Consumption
 
