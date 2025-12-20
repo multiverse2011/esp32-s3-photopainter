@@ -374,7 +374,16 @@ static void run_state_machine(void)
             case STATE_DEEP_SLEEP:
                 ESP_LOGI(TAG, "STATE: DEEP_SLEEP");
                 cleanup_components();
+#if CONFIG_DISABLE_DEEP_SLEEP
+                {
+                    uint32_t sleep_minutes = get_sleep_duration_minutes();
+                    ESP_LOGW(TAG, "Deep sleep disabled; waiting %lu minutes", sleep_minutes);
+                    vTaskDelay(pdMS_TO_TICKS(sleep_minutes * 60U * 1000U));
+                    s_current_state = STATE_INIT;
+                }
+#else
                 enter_deep_sleep();
+#endif
                 // Never returns
                 break;
 

@@ -9,5 +9,5 @@ idf_component_register(
         weather_service
         calendar_ui
         nvs_flash
-        esp_sleep
+        esp_hw_support
 )

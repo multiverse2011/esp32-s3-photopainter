@@ -103,21 +103,30 @@ static esp_err_t http_fetch_internal(const char *url)
 
     // Perform request
     esp_err_t err = esp_http_client_perform(client);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "HTTP request failed: %s", esp_err_to_name(err));
-        esp_http_client_cleanup(client);
-        return err;
-    }
-
-    // Check status code
     int status = esp_http_client_get_status_code(client);
     int content_length = esp_http_client_get_content_length(client);
     ESP_LOGI(TAG, "HTTP Status: %d, Content-Length: %d", status, content_length);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "HTTP request failed: %s (status=%d)", esp_err_to_name(err), status);
+        if (s_http_buffer_len > 0) {
+            size_t snippet_len = s_http_buffer_len > 256 ? 256 : s_http_buffer_len;
+            s_http_buffer[snippet_len] = '\0';
+            ESP_LOGW(TAG, "HTTP error body (first %u bytes): %s", (unsigned)snippet_len, s_http_buffer);
+        }
+        esp_http_client_cleanup(client);
+        return err;
+    }
 
     esp_http_client_cleanup(client);
 
     if (status != 200) {
         ESP_LOGE(TAG, "API returned error status: %d", status);
+        if (s_http_buffer_len > 0) {
+            size_t snippet_len = s_http_buffer_len > 256 ? 256 : s_http_buffer_len;
+            s_http_buffer[snippet_len] = '\0';
+            ESP_LOGW(TAG, "API error body (first %u bytes): %s", (unsigned)snippet_len, s_http_buffer);
+        }
         return ESP_ERR_HTTP_BASE + status;
     }
 
@@ -153,6 +162,11 @@ esp_err_t weather_service_fetch(weather_data_t *data)
              CONFIG_LOCATION_LONGITUDE,
              CONFIG_OPENWEATHERMAP_API_KEY);
 
+    {
+        size_t key_len = strlen(CONFIG_OPENWEATHERMAP_API_KEY);
+        const char *key_tail = (key_len >= 4) ? (CONFIG_OPENWEATHERMAP_API_KEY + key_len - 4) : CONFIG_OPENWEATHERMAP_API_KEY;
+        ESP_LOGI(TAG, "OpenWeatherMap API key length: %u, tail: %s", (unsigned)key_len, key_tail);
+    }
     ESP_LOGI(TAG, "Fetching weather data from OpenWeatherMap");
 
     // Retry loop with exponential backoff
