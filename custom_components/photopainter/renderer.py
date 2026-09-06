@@ -196,6 +196,53 @@ def _font_for_character(character: str, size: int, *, mono: bool = False) -> Ima
     return _font(size, mono=mono, japanese=ord(character) > 0x024F)
 
 
+# A codepoint no font maps, used to learn what this font's "missing glyph" looks
+# like.  Plane 16 private use, so even icon fonts leave it alone.
+_NOTDEF_SAMPLE = "􏿽"
+_GLYPH_CACHE: dict[tuple[int, bool, str], bool] = {}
+
+
+_PROBE_BOX = 96
+
+
+def _render_probe(font: ImageFont.FreeTypeFont | ImageFont.ImageFont, character: str) -> bytes:
+    probe = Image.new("L", (_PROBE_BOX, _PROBE_BOX), 0)
+    ImageDraw.Draw(probe).text((4, 4), character, font=font, fill=255)
+    return probe.tobytes()
+
+
+def _has_glyph(character: str, size: int, *, mono: bool = False) -> bool:
+    """Report whether the font picked for this character can actually draw it.
+
+    Pillow does not expose a font's cmap, and a missing glyph is drawn as the
+    font's own `.notdef` box rather than raising, so the character is compared
+    against a codepoint that is certainly missing.
+    """
+
+    key = (size, mono, character)
+    cached = _GLYPH_CACHE.get(key)
+    if cached is not None:
+        return cached
+    font = _font_for_character(character, size, mono=mono)
+    result = _render_probe(font, character) != _render_probe(font, _NOTDEF_SAMPLE)
+    _GLYPH_CACHE[key] = result
+    return result
+
+
+def supported_text(text: str, size: int) -> str:
+    """Drop characters the fonts cannot draw, so no `.notdef` box reaches the panel.
+
+    Emoji are the common case: calendar titles carry them and the bundled Noto
+    Sans JP has no glyphs for them.  Whitespace orphaned by a dropped character
+    goes with it, so "🎂 ゆうり" renders as "ゆうり" rather than " ゆうり".
+    """
+
+    if all(_has_glyph(character, size) for character in text):
+        return text
+    kept = "".join(character for character in text if _has_glyph(character, size))
+    return kept.strip()
+
+
 def _mixed_width(draw: ImageDraw.ImageDraw, text: str, size: int, *, mono: bool = False) -> int:
     return sum(draw.textbbox((0, 0), char, font=_font_for_character(char, size, mono=mono))[2] for char in text)
 
@@ -323,7 +370,7 @@ def _calendar_line(draw: ImageDraw.ImageDraw, event: Any, display_date: date, x:
             break
     draw.text((x, y + 4), label, font=time_font, fill=BLACK)
     title_x = x + 80
-    title = _fit_mixed_text(draw, event.title, 24, width - 80)
+    title = _fit_mixed_text(draw, supported_text(event.title, 24), 24, width - 80)
     _draw_mixed_text(draw, (title_x, y - 3), title, 24, BLACK)
 
 
