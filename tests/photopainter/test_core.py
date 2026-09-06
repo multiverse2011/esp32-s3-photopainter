@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timedelta, timezone
 
+from custom_components.photopainter.config import day_window_minutes, parse_hhmm
 from custom_components.photopainter.core import (
     forecast_boundaries,
     normalize_calendar_events,
@@ -114,6 +115,30 @@ class CoreContractTests(unittest.TestCase):
         self.assertIsNone(section.slots[0].raw_temperature)
         self.assertIsNone(section.slots[1].temperature_c)
         self.assertIsNone(section.slots[1].raw_temperature)
+
+
+class DayWindowTests(unittest.TestCase):
+    def test_hours_past_midnight_are_accepted(self) -> None:
+        self.assertEqual(parse_hhmm("08:00", name="day_start"), 8 * 60)
+        self.assertEqual(parse_hhmm("8:00", name="day_start"), 8 * 60)
+        self.assertEqual(parse_hhmm("26:00", name="day_end"), 26 * 60)
+
+    def test_wrapping_window_matches_the_past_midnight_notation(self) -> None:
+        self.assertEqual(day_window_minutes("08:00", "02:00"), (480, 1560))
+        self.assertEqual(
+            day_window_minutes("08:00", "02:00"),
+            day_window_minutes("08:00", "26:00"),
+        )
+
+    def test_window_without_wrap_is_left_alone(self) -> None:
+        self.assertEqual(day_window_minutes("06:00", "22:00"), (360, 1320))
+
+    def test_malformed_and_oversized_windows_are_rejected(self) -> None:
+        for value in ("24:60", "8", "0800", "48:00", "aa:bb", ""):
+            with self.assertRaises(ValueError):
+                parse_hhmm(value, name="day_start")
+        with self.assertRaises(ValueError):
+            day_window_minutes("08:00", "40:00")
 
 
 if __name__ == "__main__":

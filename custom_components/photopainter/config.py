@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from datetime import time
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -25,15 +24,44 @@ def validate_device_id(value: Any) -> str:
     return value
 
 
-def parse_hhmm(value: Any, *, name: str) -> time:
+HHMM_RE = re.compile(r"^(\d{1,2}):([0-5]\d)$")
+MINUTES_PER_DAY = 24 * 60
+MAX_HHMM_HOUR = 47
+
+
+def parse_hhmm(value: Any, *, name: str) -> int:
+    """Return minutes from local midnight.
+
+    Hours may run past 24 so a window that crosses midnight can be written
+    the way broadcast schedules are: ``26:00`` is 02:00 on the following day.
+    """
+
     if not isinstance(value, str):
         raise ValueError(f"{name} must be HH:MM")
-    try:
-        hour, minute = (int(part) for part in value.split(":", 1))
-        parsed = time(hour, minute)
-    except (ValueError, TypeError):
-        raise ValueError(f"{name} must be HH:MM") from None
-    return parsed
+    match = HHMM_RE.match(value.strip())
+    if match is None:
+        raise ValueError(f"{name} must be HH:MM")
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    if hour > MAX_HHMM_HOUR:
+        raise ValueError(f"{name} must be between 00:00 and {MAX_HHMM_HOUR}:59")
+    return hour * 60 + minute
+
+
+def day_window_minutes(day_start: Any, day_end: Any) -> tuple[int, int]:
+    """Return the day window as minutes from midnight, end always after start.
+
+    ``08:00``-``02:00`` and ``08:00``-``26:00`` describe the same window; the
+    end is pushed to the next day when it is not already past the start.
+    """
+
+    start = parse_hhmm(day_start, name="day_start")
+    end = parse_hhmm(day_end, name="day_end")
+    if end <= start:
+        end += MINUTES_PER_DAY
+    if end - start > MINUTES_PER_DAY:
+        raise ValueError("the day window must not exceed 24 hours")
+    return start, end
 
 
 def validate_intervals(day: Any, night: Any) -> tuple[int, int]:
@@ -76,8 +104,7 @@ def normalize_entry_data(data: dict[str, Any]) -> dict[str, Any]:
     result["night_interval_minutes"] = night
     result.setdefault("day_start", DEFAULT_DAY_START)
     result.setdefault("day_end", DEFAULT_DAY_END)
-    parse_hhmm(result["day_start"], name="day_start")
-    parse_hhmm(result["day_end"], name="day_end")
+    day_window_minutes(result["day_start"], result["day_end"])
     if not isinstance(result.get("device_key_hash"), str) or not re.fullmatch(r"[0-9a-f]{64}", result["device_key_hash"]):
         raise ValueError("device key hash is missing")
     return result

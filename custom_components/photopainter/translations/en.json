@@ -22,6 +22,10 @@
           "night_interval_minutes": "Night update interval (minutes)",
           "day_start": "Day start",
           "day_end": "Day end"
+        },
+        "data_description": {
+          "day_start": "24-hour time. Hours past 24:00 mean the following day, so a day that runs from 08:00 to 02:00 can be written as 08:00 and 26:00.",
+          "day_end": "24-hour time. Hours past 24:00 mean the following day, so a day that runs from 08:00 to 02:00 can be written as 08:00 and 26:00."
         }
       },
       "key": {
@@ -49,6 +53,10 @@
           "night_interval_minutes": "Night update interval (minutes)",
           "day_start": "Day start",
           "day_end": "Day end"
+        },
+        "data_description": {
+          "day_start": "24-hour time. Hours past 24:00 mean the following day, so a day that runs from 08:00 to 02:00 can be written as 08:00 and 26:00.",
+          "day_end": "24-hour time. Hours past 24:00 mean the following day, so a day that runs from 08:00 to 02:00 can be written as 08:00 and 26:00."
         }
       },
       "key": {
