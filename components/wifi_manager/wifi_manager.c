@@ -101,11 +101,10 @@ esp_err_t wifi_manager_init(void)
 
     // Initialize NVS
     esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "NVS initialization failed: %s; refusing implicit erase", esp_err_to_name(ret));
+        return ret;
     }
-    ESP_ERROR_CHECK(ret);
 
     // Create event group
     s_wifi_event_group = xEventGroupCreate();
@@ -214,6 +213,19 @@ esp_err_t wifi_manager_disconnect(void)
 bool wifi_manager_is_connected(void)
 {
     return s_is_connected;
+}
+
+esp_err_t wifi_manager_get_rssi(int *rssi_dbm)
+{
+    if (rssi_dbm == NULL || !s_is_connected) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    wifi_ap_record_t record;
+    esp_err_t ret = esp_wifi_sta_get_ap_info(&record);
+    if (ret == ESP_OK) {
+        *rssi_dbm = record.rssi;
+    }
+    return ret;
 }
 
 esp_err_t wifi_manager_sync_time(uint32_t timeout_ms)

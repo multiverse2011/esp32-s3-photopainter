@@ -1,6 +1,10 @@
 #ifndef EPAPER_PORT_H
 #define EPAPER_PORT_H
 
+#include "esp_err.h"
+#include <stddef.h>
+#include <stdint.h>
+
 
 /**********************************
 Color Index
@@ -34,9 +38,12 @@ extern "C" {
 #endif
 
 
-void epaper_port_init(void);
-void epaper_port_clear(uint8_t *Image,uint8_t color);
-void epaper_port_display(uint8_t *Image);
+esp_err_t epaper_port_init(void);
+esp_err_t epaper_port_clear(uint8_t *Image, uint8_t color);
+esp_err_t epaper_port_display(uint8_t *Image);
+esp_err_t epaper_port_sleep(void);
+void epaper_port_deinit(void);
+void epaper_port_set_deadline_us(int64_t absolute_deadline_us);
 
 
 #ifdef __cplusplus

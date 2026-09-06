@@ -55,6 +55,9 @@ esp_err_t wifi_manager_disconnect(void);
  */
 bool wifi_manager_is_connected(void);
 
+/** Read the current AP RSSI, or return ESP_ERR_INVALID_STATE when offline. */
+esp_err_t wifi_manager_get_rssi(int *rssi_dbm);
+
 /**
  * @brief Synchronize time via SNTP
  *

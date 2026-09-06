@@ -100,6 +100,9 @@ esp_err_t epd_driver_sleep(void);
  */
 esp_err_t epd_driver_reset(void);
 
+/** Bound initialization/refresh BUSY and SPI waits to an absolute esp_timer deadline. */
+void epd_driver_set_deadline_us(int64_t absolute_deadline_us);
+
 /**
  * @brief Deinitialize EPD driver
  *

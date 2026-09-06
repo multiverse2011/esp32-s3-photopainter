@@ -22,12 +22,16 @@ from .const import (
 )
 
 
-def _entity(domain: str) -> selector.EntitySelector:
-    return selector.EntitySelector(selector.EntitySelectorConfig(domain=domain))
+def _entity(domain: str, device_class: str | None = None) -> selector.EntitySelector:
+    if device_class is None:
+        return selector.EntitySelector(selector.EntitySelectorConfig(domain=domain))
+    return selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=domain, device_class=device_class)
+    )
 
 
-def _optional_entity(domain: str) -> Any:
-    return vol.Any(None, _entity(domain))
+def _optional_entity(domain: str, device_class: str | None = None) -> Any:
+    return vol.Any(None, _entity(domain, device_class))
 
 
 class PhotoPainterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -66,11 +70,11 @@ class PhotoPainterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional("calendar_2", default=None): _optional_entity("calendar"),
                 vol.Optional("weather_entity", default=None): _optional_entity("weather"),
                 **{
-                    vol.Optional(f"{room}_temperature", default=None): _optional_entity("sensor")
+                    vol.Optional(f"{room}_temperature", default=None): _optional_entity("sensor", "temperature")
                     for room in ROOMS
                 },
                 **{
-                    vol.Optional(f"{room}_humidity", default=None): _optional_entity("sensor")
+                    vol.Optional(f"{room}_humidity", default=None): _optional_entity("sensor", "humidity")
                     for room in ROOMS
                 },
                 vol.Optional("day_interval_minutes", default=DEFAULT_DAY_INTERVAL): vol.Coerce(int),
@@ -94,7 +98,7 @@ class PhotoPainterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
         return self.async_show_form(
             step_id="key",
-            data_schema=vol.Schema({vol.Required("confirm", default=False): vol.Boolean()}),
+            data_schema=vol.Schema({vol.Required("confirm", default=False): selector.BooleanSelector()}),
             description_placeholders={"device_key": self._pending_key or ""},
         )
 
@@ -143,7 +147,7 @@ class PhotoPainterOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data={})
         return self.async_show_form(
             step_id="key",
-            data_schema=vol.Schema({vol.Required("confirm", default=False): vol.Boolean()}),
+            data_schema=vol.Schema({vol.Required("confirm", default=False): selector.BooleanSelector()}),
             description_placeholders={"device_key": self._pending_key or ""},
         )
 
@@ -155,6 +159,6 @@ class PhotoPainterOptionsFlow(config_entries.OptionsFlow):
                 vol.Required("night_interval_minutes", default=data.get("night_interval_minutes", DEFAULT_NIGHT_INTERVAL)): vol.Coerce(int),
                 vol.Required("day_start", default=data.get("day_start", DEFAULT_DAY_START)): str,
                 vol.Required("day_end", default=data.get("day_end", DEFAULT_DAY_END)): str,
-                vol.Optional("rotate_key", default=False): vol.Boolean(),
+                vol.Optional("rotate_key", default=False): selector.BooleanSelector(),
             }
         )

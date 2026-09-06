@@ -13,7 +13,7 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_point_in_time, async_track_state_change_event
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .config import parse_hhmm
+from .config import day_window_minutes
 from .const import (
     CALENDAR_OWNERS,
     DEFAULT_DAY_END,
@@ -44,18 +44,18 @@ def next_poll_at(
 
     tz = parse_timezone(timezone_name)
     local = now.astimezone(tz)
-    start = parse_hhmm(day_start, name="day_start")
-    end = parse_hhmm(day_end, name="day_end")
+    start_minutes, end_minutes = day_window_minutes(day_start, day_end)
     day_interval = max(5, int(day_interval_minutes))
     night_interval = max(30, int(night_interval_minutes))
     candidates: list[datetime] = []
     # Wake times form a local-time series anchored at the configured day and
     # night boundaries.  This keeps 13:07 on a 13:30 cadence and includes the
     # 00:00 wake instead of drifting to 01:59.
-    for offset in range(-1, 4):
+    for offset in range(-2, 4):
         day = local.date() + timedelta(days=offset)
-        day_start_dt = datetime.combine(day, start, tzinfo=tz)
-        day_end_dt = datetime.combine(day, end, tzinfo=tz)
+        midnight = datetime.combine(day, time(0, 0), tzinfo=tz)
+        day_start_dt = midnight + timedelta(minutes=start_minutes)
+        day_end_dt = midnight + timedelta(minutes=end_minutes)
         next_day_start = day_start_dt + timedelta(days=1)
         cursor = day_start_dt
         while cursor < day_end_dt:
