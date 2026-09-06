@@ -1,6 +1,7 @@
 #include "ha_frame_runtime.h"
 #include "sdkconfig.h"
 
+#include "axp_prot.h"
 #include "epd_driver.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -410,7 +411,7 @@ static void fill_report(ha_frame_report_t *report, const char *boot_id,
                         const char *displayed_id,
                         ha_frame_display_result_t result,
                         ha_frame_overlay_t overlay, time_t overlay_source_time,
-                        int wifi_rssi_dbm, const char *error)
+                        int battery_percent, int wifi_rssi_dbm, const char *error)
 {
     memset(report, 0, sizeof(*report));
     snprintf(report->report_id, sizeof(report->report_id), "%s-%lu", boot_id,
@@ -429,7 +430,7 @@ static void fill_report(ha_frame_report_t *report, const char *boot_id,
     report->overlay_source_time = overlay == HA_FRAME_OVERLAY_NONE ? 0 : overlay_source_time;
     report->next_wake_at = manifest != NULL && manifest->has_next_poll_at ?
                            manifest_time(manifest->next_poll_at) : 0;
-    report->battery_percent = -1;
+    report->battery_percent = battery_percent;
     report->wifi_rssi_dbm = wifi_rssi_dbm;
     if (error != NULL) {
         snprintf(report->error_code, sizeof(report->error_code), "%s", error);
@@ -518,10 +519,29 @@ static void run_once(void)
     time_t overlay_source_time = 0;
     const char *error_code = "startup";
     uint8_t *frame = NULL;
+    int battery_percent = -1;
     int wifi_rssi_dbm = 0;
     uint32_t cooldown_seconds = FALLBACK_POLL_SECONDS;
 
     epd_driver_set_deadline_us(deadline_us);
+
+    /* Bring the PMIC up before anything else can fail: the charger enable has
+       to be applied on every wake, and a missing PMIC must not stop the run. */
+    esp_err_t power_status = axp_power_init();
+    if (power_status != ESP_OK) {
+        ESP_LOGW(TAG, "PMIC unavailable (%s); battery level reported as unknown",
+                 esp_err_to_name(power_status));
+    } else {
+        axp_power_status_t power;
+        if (axp_power_read_status(&power) == ESP_OK) {
+            battery_percent = power.percent;
+            ESP_LOGI(TAG,
+                     "battery: connected=%d percent=%d voltage_mv=%d charging=%d vbus=%d state=%s",
+                     power.battery_connected, power.percent, power.voltage_mv,
+                     power.charging, power.vbus_present,
+                     axp_charge_state_str(power.charge_state));
+        }
+    }
 
     make_boot_id(boot_id);
     if (load_bearer_key(bearer_key) != ESP_OK) {
@@ -695,7 +715,7 @@ static void run_once(void)
     }
     fill_report(&current_report, boot_id, have_manifest ? &manifest : NULL,
                 displayed_id[0] == '\0' ? NULL : displayed_id, display_result,
-                local_overlay, overlay_source_time, wifi_rssi_dbm,
+                local_overlay, overlay_source_time, battery_percent, wifi_rssi_dbm,
                 display_result == HA_FRAME_RESULT_FAILED ? error_code : NULL);
 
     if (network_ready && client_ready && pending_valid && !deadline_expired(deadline_us)) {
