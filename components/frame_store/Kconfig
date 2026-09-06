@@ -1,0 +1,25 @@
+menu "PhotoPainter firmware frame cache"
+
+config PHOTOPAINTER_ENABLE_CACHE
+    bool "Enable the optional PhotoPainter frame cache partition"
+    default n
+    help
+        Enable A/B frame storage only when the partition table contains a
+        verified `photocache` data partition. The default is disabled because
+        the shipped 2 MiB partition table has no cache partition.
+
+config PHOTOPAINTER_CACHE_PARTITION
+    string "Frame cache partition label"
+    default "photocache"
+    depends on PHOTOPAINTER_ENABLE_CACHE
+
+config PHOTOPAINTER_CACHE_SLOT_SIZE
+    int "Frame cache slot size"
+    default 262144
+    range 196608 1048576
+    depends on PHOTOPAINTER_ENABLE_CACHE
+    help
+        Each A/B slot must fit the 192000-byte packed frame and its metadata.
+        Keep this value aligned to the flash erase sector size.
+
+endmenu

@@ -1,0 +1,71 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add PhotoPainter display",
+        "description": "A device key is generated once after setup. Store it in the display securely; it is never saved in Home Assistant.",
+        "data": {
+          "device_id": "Device ID",
+          "timezone": "Display timezone",
+          "calendar_1": "Star calendar",
+          "calendar_2": "Moon calendar",
+          "weather_entity": "Hourly weather entity",
+          "living_temperature": "Living temperature",
+          "living_humidity": "Living humidity",
+          "study_temperature": "Study temperature",
+          "study_humidity": "Study humidity",
+          "bedroom_temperature": "Bedroom temperature",
+          "bedroom_humidity": "Bedroom humidity",
+          "outdoor_temperature": "Outdoor temperature",
+          "outdoor_humidity": "Outdoor humidity",
+          "day_interval_minutes": "Day update interval (minutes)",
+          "night_interval_minutes": "Night update interval (minutes)",
+          "day_start": "Day start",
+          "day_end": "Day end"
+        },
+        "data_description": {
+          "day_start": "24-hour time. Hours past 24:00 mean the following day, so a day that runs from 08:00 to 02:00 can be written as 08:00 and 26:00.",
+          "day_end": "24-hour time. Hours past 24:00 mean the following day, so a day that runs from 08:00 to 02:00 can be written as 08:00 and 26:00."
+        }
+      },
+      "key": {
+        "title": "Save the PhotoPainter device key",
+        "description": "Copy this one-time key into the display setup before confirming: {device_key}",
+        "data": {
+          "confirm": "I stored the device key securely"
+        }
+      }
+    },
+    "error": {
+      "invalid_options": "The update schedule is invalid."
+    },
+    "abort": {
+      "already_configured": "This device ID is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "PhotoPainter update schedule",
+        "description": "The display applies regenerated frames at its next scheduled connection.",
+        "data": {
+          "day_interval_minutes": "Day update interval (minutes)",
+          "night_interval_minutes": "Night update interval (minutes)",
+          "day_start": "Day start",
+          "day_end": "Day end"
+        },
+        "data_description": {
+          "day_start": "24-hour time. Hours past 24:00 mean the following day, so a day that runs from 08:00 to 02:00 can be written as 08:00 and 26:00.",
+          "day_end": "24-hour time. Hours past 24:00 mean the following day, so a day that runs from 08:00 to 02:00 can be written as 08:00 and 26:00."
+        }
+      },
+      "key": {
+        "title": "Save the new device key",
+        "description": "Copy this one-time replacement key into the display setup before confirming: {device_key}",
+        "data": {
+          "confirm": "I stored the replacement key securely"
+        }
+      }
+    }
+  }
+}
