@@ -94,7 +94,7 @@ class PhotoPainterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
         return self.async_show_form(
             step_id="key",
-            data_schema=vol.Schema({vol.Required("confirm", default=False): vol.Boolean()}),
+            data_schema=vol.Schema({vol.Required("confirm", default=False): selector.BooleanSelector()}),
             description_placeholders={"device_key": self._pending_key or ""},
         )
 
@@ -143,7 +143,7 @@ class PhotoPainterOptionsFlow(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data={})
         return self.async_show_form(
             step_id="key",
-            data_schema=vol.Schema({vol.Required("confirm", default=False): vol.Boolean()}),
+            data_schema=vol.Schema({vol.Required("confirm", default=False): selector.BooleanSelector()}),
             description_placeholders={"device_key": self._pending_key or ""},
         )
 
@@ -155,6 +155,6 @@ class PhotoPainterOptionsFlow(config_entries.OptionsFlow):
                 vol.Required("night_interval_minutes", default=data.get("night_interval_minutes", DEFAULT_NIGHT_INTERVAL)): vol.Coerce(int),
                 vol.Required("day_start", default=data.get("day_start", DEFAULT_DAY_START)): str,
                 vol.Required("day_end", default=data.get("day_end", DEFAULT_DAY_END)): str,
-                vol.Optional("rotate_key", default=False): vol.Boolean(),
+                vol.Optional("rotate_key", default=False): selector.BooleanSelector(),
             }
         )
