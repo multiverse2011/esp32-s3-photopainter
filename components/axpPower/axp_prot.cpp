@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "i2c_bsp.h"
 #include <stdio.h>
+#include <string.h>
 
 const char *TAG = "axp2101";
 
@@ -207,4 +208,114 @@ void axp2101_isCharging_task(void *arg) {
         }
         ESP_LOGI(TAG, "getBattVoltage: %d mV", axp2101.getBattVoltage());
     }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Battery and charger status                                                 */
+/* ------------------------------------------------------------------------- */
+
+static bool s_power_ready = false;
+
+const char *axp_charge_state_str(axp_charge_state_t state) {
+    switch (state) {
+    case AXP_CHARGE_STATE_TRICKLE: return "trickle";
+    case AXP_CHARGE_STATE_PRE:     return "pre";
+    case AXP_CHARGE_STATE_CC:      return "constant_current";
+    case AXP_CHARGE_STATE_CV:      return "constant_voltage";
+    case AXP_CHARGE_STATE_DONE:    return "done";
+    case AXP_CHARGE_STATE_STOP:    return "stopped";
+    default:                       return "unknown";
+    }
+}
+
+static axp_charge_state_t charge_state_from_register(uint8_t status) {
+    switch (status) {
+    case XPOWERS_AXP2101_CHG_TRI_STATE:  return AXP_CHARGE_STATE_TRICKLE;
+    case XPOWERS_AXP2101_CHG_PRE_STATE:  return AXP_CHARGE_STATE_PRE;
+    case XPOWERS_AXP2101_CHG_CC_STATE:   return AXP_CHARGE_STATE_CC;
+    case XPOWERS_AXP2101_CHG_CV_STATE:   return AXP_CHARGE_STATE_CV;
+    case XPOWERS_AXP2101_CHG_DONE_STATE: return AXP_CHARGE_STATE_DONE;
+    case XPOWERS_AXP2101_CHG_STOP_STATE: return AXP_CHARGE_STATE_STOP;
+    default:                             return AXP_CHARGE_STATE_UNKNOWN;
+    }
+}
+
+bool axp_power_ready(void) {
+    return s_power_ready;
+}
+
+esp_err_t axp_power_init(void) {
+    if (s_power_ready) {
+        return ESP_OK;
+    }
+    i2c_master_Init();
+    if (!axp2101.begin(AXP2101_SLAVE_ADDRESS, AXP2101_SLAVE_Read, AXP2101_SLAVE_Write)) {
+        ESP_LOGE(TAG, "PMU not responding on I2C; battery state stays unknown");
+        return ESP_ERR_NOT_FOUND;
+    }
+    axp_cmd_init();
+
+    /* Report the charger configuration as found before this boot changes it, so
+       a board that ships with charging disabled is visible in the log. */
+    ESP_LOGI(TAG, "charger before init: gauge=%d cell_charge=%d curr_step=%u target_mv_opt=%u",
+             (int)axp2101.getRegisterBit(XPOWERS_AXP2101_CHARGE_GAUGE_WDT_CTRL, 3),
+             (int)axp2101.getRegisterBit(XPOWERS_AXP2101_CHARGE_GAUGE_WDT_CTRL, 1),
+             (unsigned)axp2101.getChargerConstantCurr(),
+             (unsigned)axp2101.getChargeTargetVoltage());
+
+    /* getBatteryPercent() reads the gauge register, which is meaningless while
+       the gauge is off, and the cell battery charger has its own enable bit
+       separate from the button battery one set in axp_cmd_init(). Both are
+       already set on the PhotoPainter board, so follow axp_cmd_init() and only
+       write when the bit is actually clear: a redundant read-modify-write on
+       0x18 costs an I2C transaction on every wake and has been observed to
+       NACK and retry. */
+    if (!axp2101.getRegisterBit(XPOWERS_AXP2101_CHARGE_GAUGE_WDT_CTRL, 3)) {
+        axp2101.enableGauge();
+        ESP_LOGW(TAG, "fuel gauge was disabled; enabled it");
+    }
+    if (!axp2101.getRegisterBit(XPOWERS_AXP2101_CHARGE_GAUGE_WDT_CTRL, 1)) {
+        axp2101.enableCellbatteryCharge();
+        ESP_LOGW(TAG, "cell battery charging was disabled; enabled it");
+    }
+
+    ESP_LOGI(TAG, "charger after init: gauge=%d cell_charge=%d",
+             (int)axp2101.getRegisterBit(XPOWERS_AXP2101_CHARGE_GAUGE_WDT_CTRL, 3),
+             (int)axp2101.getRegisterBit(XPOWERS_AXP2101_CHARGE_GAUGE_WDT_CTRL, 1));
+
+    s_power_ready = true;
+    return ESP_OK;
+}
+
+esp_err_t axp_power_read_status(axp_power_status_t *out) {
+    if (out == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    memset(out, 0, sizeof(*out));
+    out->percent = -1;
+    out->voltage_mv = -1;
+    out->charge_state = AXP_CHARGE_STATE_UNKNOWN;
+    if (!s_power_ready) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    out->battery_connected = axp2101.isBatteryConnect();
+    out->charging = axp2101.isCharging();
+    out->vbus_present = axp2101.isVbusIn();
+    out->charge_state = charge_state_from_register(axp2101.getChargerStatus());
+
+    if (out->battery_connected) {
+        uint16_t millivolt = axp2101.getBattVoltage();
+        if (millivolt > 0) {
+            out->voltage_mv = (int)millivolt;
+        }
+        /* The gauge register reads 0xFF while it is still settling after a cold
+           start; anything outside 0-100 is reported as unknown rather than
+           clamped, so HA shows `unknown` instead of a made-up level. */
+        int percent = axp2101.getBatteryPercent();
+        if (percent >= 0 && percent <= 100) {
+            out->percent = percent;
+        }
+    }
+    return ESP_OK;
 }
