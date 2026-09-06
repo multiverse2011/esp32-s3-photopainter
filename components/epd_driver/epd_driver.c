@@ -24,13 +24,19 @@ esp_err_t epd_driver_init(void)
 
     ESP_LOGI(TAG, "Initializing EPD driver (epaper_port)");
 
-    // Initialize display driver (reference implementation)
-    epaper_port_init();
+    // Initialize display driver and propagate SPI/BUSY failures.
+    esp_err_t ret = epaper_port_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Display port initialization failed: %s", esp_err_to_name(ret));
+        epaper_port_deinit();
+        return ret;
+    }
 
     // Allocate framebuffer in PSRAM
     s_framebuffer = heap_caps_malloc(EPD_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
     if (s_framebuffer == NULL) {
         ESP_LOGE(TAG, "Failed to allocate framebuffer in PSRAM");
+        epaper_port_deinit();
         return ESP_ERR_NO_MEM;
     }
 
@@ -76,9 +82,12 @@ esp_err_t epd_driver_refresh(void)
     }
 
     ESP_LOGI(TAG, "Starting display refresh (epaper_port)");
-    epaper_port_display(s_framebuffer);
+    esp_err_t ret = epaper_port_display(s_framebuffer);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Display refresh failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
     ESP_LOGI(TAG, "Display refresh complete");
-
     return ESP_OK;
 }
 
@@ -88,15 +97,18 @@ esp_err_t epd_driver_sleep(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    // epaper_port has no explicit sleep command.
-    return ESP_OK;
+    return epaper_port_sleep();
 }
 
 esp_err_t epd_driver_reset(void)
 {
     ESP_LOGI(TAG, "Resetting display (epaper_port)");
-    epaper_port_init();
-    return ESP_OK;
+    return epaper_port_init();
+}
+
+void epd_driver_set_deadline_us(int64_t absolute_deadline_us)
+{
+    epaper_port_set_deadline_us(absolute_deadline_us);
 }
 
 void epd_driver_deinit(void)
@@ -112,6 +124,8 @@ void epd_driver_deinit(void)
         free(s_framebuffer);
         s_framebuffer = NULL;
     }
+
+    epaper_port_deinit();
 
     s_initialized = false;
     ESP_LOGI(TAG, "EPD driver deinitialized");

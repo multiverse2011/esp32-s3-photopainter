@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "main.c"
+    SRCS "main.c" "ha_frame_runtime.c"
     INCLUDE_DIRS ""
     PRIV_REQUIRES
         spi_flash
@@ -14,4 +14,8 @@ idf_component_register(
         axpPower
         nvs_flash
         esp_hw_support
+        esp_timer
+        driver
+        frame_store
+        ha_frame_client
 )

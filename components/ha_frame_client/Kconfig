@@ -1,0 +1,39 @@
+menu "PhotoPainter Home Assistant client"
+
+config PHOTOPAINTER_HA_MODE
+    bool "Use the Home Assistant frame client runtime"
+    default n
+    help
+        Select the opt-in HA generated-frame runtime. The legacy local
+        weather/calendar renderer remains the default until this profile has
+        been tested on the target hardware.
+
+config PHOTOPAINTER_HA_ALLOW_INSECURE_HTTP
+    bool "Allow plain HTTP for the Home Assistant origin"
+    default n
+    depends on PHOTOPAINTER_HA_MODE
+    help
+        Plain HTTP is disabled by default. Enable this only for an isolated,
+        explicitly trusted network; HTTPS with the ESP certificate bundle is
+        required for normal operation.
+
+config PHOTOPAINTER_HA_ORIGIN
+    string "Home Assistant origin"
+    default "https://homeassistant.local"
+    depends on PHOTOPAINTER_HA_MODE
+    help
+        Scheme and host only, for example https://ha.example.test. Paths,
+        query strings, and redirects are not accepted by the client.
+
+config PHOTOPAINTER_HA_DEVICE_ID
+    string "Home Assistant PhotoPainter device ID"
+    default "hall-display"
+    depends on PHOTOPAINTER_HA_MODE
+
+config PHOTOPAINTER_HA_TIMEOUT_MS
+    int "Home Assistant request timeout (ms)"
+    default 10000
+    range 1000 30000
+    depends on PHOTOPAINTER_HA_MODE
+
+endmenu

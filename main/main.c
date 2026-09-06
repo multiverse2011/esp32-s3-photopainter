@@ -9,6 +9,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include "sdkconfig.h"
+
+#ifndef CONFIG_PHOTOPAINTER_HA_MODE
+#define CONFIG_PHOTOPAINTER_HA_MODE 0
+#endif
+
+#if CONFIG_PHOTOPAINTER_HA_MODE
+#include "ha_frame_runtime.h"
+#else
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -27,6 +36,14 @@
 #include "display_types.h"
 #include "i2c_bsp.h"
 #include "axp_prot.h"
+#endif
+
+#if CONFIG_PHOTOPAINTER_HA_MODE
+void app_main(void)
+{
+    ha_frame_runtime_app_main();
+}
+#else
 
 static const char *TAG = "main";
 
@@ -527,3 +544,5 @@ void app_main(void)
     s_current_state = STATE_INIT;
     run_state_machine();
 }
+
+#endif
