@@ -1,0 +1,59 @@
+{
+  "purpose": "PhotoPainter Layout B raster assets",
+  "mdi": {
+    "package": "Material Design Webfont",
+    "version": "7.4.47",
+    "source": "https://github.com/Templarian/MaterialDesign-Webfont",
+    "font": "materialdesignicons-webfont.ttf",
+    "sha256": "61e8aba5a4e981fe22cf7c8e8bcdbea00476e75c62c37f01bf7ee33361d68428",
+    "css": "materialdesignicons.css",
+    "glyphs": {
+      "star-four-points": "F0AE2",
+      "moon-waning-crescent": "F0F65",
+      "alert-circle-outline": "F05D6",
+      "weather-cloudy": "F0590",
+      "weather-fog": "F0591",
+      "weather-hail": "F0592",
+      "weather-lightning": "F0593",
+      "weather-lightning-rainy": "F067E",
+      "weather-night": "F0594",
+      "weather-night-partly-cloudy": "F0F31",
+      "weather-partly-cloudy": "F0595",
+      "weather-pouring": "F0596",
+      "weather-rainy": "F0597",
+      "weather-snowy": "F0598",
+      "weather-snowy-rainy": "F067F",
+      "weather-sunny": "F0599",
+      "weather-windy": "F059D",
+      "weather-windy-variant": "F059E"
+    }
+  },
+  "fonts": {
+    "ibm_plex_sans": {
+      "source": "https://github.com/IBM/plex/tree/master/packages/plex-sans",
+      "file": "IBMPlexSans-Regular.ttf",
+      "sha256": "975dcda37d80f038dcd143c22e33ca2d97a0cc5a929aace1c749153b0fe1afa5"
+    },
+    "ibm_plex_sans_medium": {
+      "source": "https://github.com/IBM/plex/tree/master/packages/plex-sans",
+      "file": "IBMPlexSans-Medium.ttf",
+      "sha256": "331c8639d7598b2cde62a911a71db195e30cb655cd6bdf2e324a7e984955f907"
+    },
+    "ibm_plex_mono": {
+      "source": "https://github.com/IBM/plex/tree/master/packages/plex-mono",
+      "file": "IBMPlexMono-Regular.ttf",
+      "sha256": "7c6fbddca4b700be918f5f6183d9bd4464fa427fe435f0b480d77fe2bb8c5a43"
+    },
+    "ibm_plex_mono_medium": {
+      "source": "https://github.com/IBM/plex/tree/master/packages/plex-mono",
+      "file": "IBMPlexMono-Medium.ttf",
+      "sha256": "98fbd727aae340b236955879dabed4d991aac9e8e90b3b2a67ce4a59221cc97c"
+    },
+    "noto_sans_jp": {
+      "source": "https://fonts.google.com/specimen/Noto+Sans+JP",
+      "file": "NotoSansJP-wght.ttf",
+      "sha256": "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f"
+    }
+  },
+  "license_files": ["LICENSE-MDI", "LICENSE-IBM-PLEX", "LICENSE-NOTO"]
+}
