@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import os
 import math
+import json
+from io import BytesIO
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
@@ -73,6 +75,7 @@ _MDI_CODEPOINTS = {
     "weather-windy": 0xF059D,
     "weather-windy-variant": 0xF059E,
 }
+_FALLBACK_MASKS: dict[str, list[str]] | None = None
 
 
 def _font_candidates(*names: str) -> Iterable[Path]:
@@ -88,7 +91,13 @@ def _font_candidates(*names: str) -> Iterable[Path]:
                 yield from root.glob(f"*/{name}")
 
 
-def _font(size: int, *, mono: bool = False, japanese: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def _font(
+    size: int,
+    *,
+    mono: bool = False,
+    japanese: bool = False,
+    medium: bool = False,
+) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     if japanese:
         names = (
             "NotoSansJP-Regular.ttf",
@@ -97,34 +106,59 @@ def _font(size: int, *, mono: bool = False, japanese: bool = False) -> ImageFont
             "NotoSansJP-wght.ttf",
         )
     elif mono:
-        names = (
-            "IBMPlexMono-Medium.ttf",
+        names = (("IBMPlexMono-Medium.ttf",) if medium else ()) + (
             "IBMPlexMono-Regular.ttf",
             "DejaVuSansMono.ttf",
         )
     else:
-        names = (
-            "IBMPlexSans-Medium.ttf",
+        names = (("IBMPlexSans-Medium.ttf",) if medium else ()) + (
             "IBMPlexSans-Regular.ttf",
             "DejaVuSans.ttf",
         )
     for candidate in _font_candidates(*names):
         try:
             if candidate.exists():
-                return ImageFont.truetype(str(candidate), size)
+                font = ImageFont.truetype(str(candidate), size)
+                if japanese and hasattr(font, "set_variation_by_axes"):
+                    # Noto Sans JP is variable; its upstream default axis is
+                    # 100, while the spec requires regular weight 400.
+                    font.set_variation_by_axes([400])
+                return font
         except OSError:
             continue
     return ImageFont.load_default()
 
 
-def _mdi_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def _mdi_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont | None:
     for candidate in _font_candidates("materialdesignicons-webfont.ttf"):
         try:
             if candidate.exists():
                 return ImageFont.truetype(str(candidate), size)
         except OSError:
             continue
-    return ImageFont.load_default()
+    return None
+
+
+def _fallback_masks() -> dict[str, list[str]]:
+    global _FALLBACK_MASKS
+    if _FALLBACK_MASKS is None:
+        path = _FONT_ROOT / "fallback-mdi-masks.json"
+        try:
+            _FALLBACK_MASKS = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _FALLBACK_MASKS = {}
+    return _FALLBACK_MASKS
+
+
+def _draw_mdi_mask(draw: ImageDraw.ImageDraw, name: str, size: int, x: int, y: int, fill: int) -> bool:
+    mask = _fallback_masks().get(f"{name}@{size}")
+    if not isinstance(mask, list) or len(mask) != size:
+        return False
+    for row, bits in enumerate(mask):
+        for column, bit in enumerate(bits):
+            if bit == "1":
+                draw.point((x + column, y + row), fill=fill)
+    return True
 
 
 def _mdi_glyph(name: str) -> str:
@@ -190,7 +224,10 @@ def _draw_owner_icon(draw: ImageDraw.ImageDraw, owner_id: str, x: int, y: int) -
 
     name = "star-four-points" if owner_id == "calendar_1" else "moon-waning-crescent"
     font = _mdi_font(24)
-    draw.text((x, y - 1), _mdi_glyph(name), font=font, fill=BLACK)
+    if font is not None:
+        draw.text((x, y - 1), _mdi_glyph(name), font=font, fill=BLACK)
+    elif not _draw_mdi_mask(draw, name, 24, x, y, BLACK):
+        raise RuntimeError(f"missing MDI asset and fallback mask: {name}")
 
 
 def _draw_weather_icon(draw: ImageDraw.ImageDraw, slot: ForecastSlot, cx: int, cy: int) -> None:
@@ -203,9 +240,12 @@ def _draw_weather_icon(draw: ImageDraw.ImageDraw, slot: ForecastSlot, cx: int, c
     }.get(condition, FORECAST_ICONS.get(condition, (None, color))[0])
     if icon_key in _MDI_CODEPOINTS:
         font = _mdi_font(32)
-        glyph = _mdi_glyph(icon_key)
-        bbox = draw.textbbox((0, 0), glyph, font=font)
-        draw.text((cx - (bbox[2] - bbox[0]) / 2, cy - 18), glyph, font=font, fill=color)
+        if font is not None:
+            glyph = _mdi_glyph(icon_key)
+            bbox = draw.textbbox((0, 0), glyph, font=font)
+            draw.text((cx - (bbox[2] - bbox[0]) / 2, cy - 18), glyph, font=font, fill=color)
+        elif not _draw_mdi_mask(draw, icon_key, 32, cx - 16, cy - 16, color):
+            raise RuntimeError(f"missing MDI asset and fallback mask: {icon_key}")
     else:
         font = _font(28, mono=True)
         marker = "—" if slot.condition is None else "?"
@@ -229,15 +269,16 @@ def _oldest_collected(snapshot: DisplaySnapshot) -> datetime | None:
 
 def _draw_header(draw: ImageDraw.ImageDraw, snapshot: DisplaySnapshot, next_poll_at: datetime | None) -> None:
     date_font = _font(20)
-    mono_font = _font(36, mono=True)
+    mono_font = _font(36, mono=True, medium=True)
     small_font = _font(16)
     tz = ZoneInfo(snapshot.display_timezone)
     local = snapshot.generated_at.astimezone(tz)
     collected = _oldest_collected(snapshot) or snapshot.generated_at
     collected_local = collected.astimezone(tz)
     draw.text((24, 28), local.strftime("%a").upper(), font=date_font, fill=RED if local.weekday() == 6 else BLACK)
-    draw.text((75, 22), local.strftime("%d"), font=mono_font, fill=BLACK)
-    draw.text((125, 28), local.strftime("%b %Y").upper(), font=date_font, fill=BLACK)
+    draw.text((75, 28), local.strftime("%b").upper(), font=date_font, fill=BLACK)
+    draw.text((130, 22), local.strftime("%d"), font=mono_font, fill=BLACK)
+    draw.text((184, 28), local.strftime("%Y"), font=date_font, fill=BLACK)
     draw.line((24, 80, 776, 80), fill=BLACK, width=2)
     next_local = next_poll_at.astimezone(tz) if next_poll_at else None
     if snapshot.status == "offline":
@@ -258,7 +299,7 @@ def _draw_header(draw: ImageDraw.ImageDraw, snapshot: DisplaySnapshot, next_poll
 
 
 def _section_label(draw: ImageDraw.ImageDraw, text: str, x: int, y: int, right: str | None = None) -> None:
-    font = _font(16)
+    font = _font(16, medium=True)
     draw.text((x, y), text, font=font, fill=BLACK)
     if right:
         width = draw.textbbox((0, 0), right, font=font)[2]
@@ -432,3 +473,73 @@ def render_snapshot(snapshot: DisplaySnapshot, *, next_poll_at: datetime | None 
         status_overlay=dict(OVERLAY),
         snapshot=snapshot,
     )
+
+
+def packed4_to_png(data: bytes) -> bytes:
+    """Expand a validated packed4 frame for HA's authenticated Image entity."""
+
+    from .core import validate_packed4
+
+    validate_packed4(data)
+    image = Image.new("P", (WIDTH, HEIGHT))
+    palette: list[int] = []
+    for color in _PALETTE_RGB:
+        palette.extend(color)
+    palette.extend([255] * (256 * 3 - len(palette)))
+    image.putpalette(palette)
+    pixels = image.load()
+    offset = 0
+    for y in range(HEIGHT):
+        for x in range(0, WIDTH, 2):
+            value = data[offset]
+            pixels[x, y] = value >> 4
+            pixels[x + 1, y] = value & 0x0F
+            offset += 1
+    stream = BytesIO()
+    image.save(stream, format="PNG", optimize=False)
+    return stream.getvalue()
+
+
+def packed4_with_overlay_to_png(
+    data: bytes,
+    *,
+    overlay: str,
+    source_time: datetime | None,
+    timezone_name: str,
+) -> bytes:
+    """Render the firmware's reserved status overlay for displayed preview."""
+
+    from .core import validate_packed4
+
+    validate_packed4(data)
+    image = Image.new("P", (WIDTH, HEIGHT))
+    palette: list[int] = []
+    for color in _PALETTE_RGB:
+        palette.extend(color)
+    palette.extend([255] * (256 * 3 - len(palette)))
+    image.putpalette(palette)
+    pixels = image.load()
+    offset = 0
+    for y in range(HEIGHT):
+        for x in range(0, WIDTH, 2):
+            value = data[offset]
+            pixels[x, y] = value >> 4
+            pixels[x + 1, y] = value & 0x0F
+            offset += 1
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((OVERLAY["x"], OVERLAY["y"], OVERLAY["x"] + OVERLAY["width"] - 1, OVERLAY["y"] + OVERLAY["height"] - 1), fill=WHITE)
+    font = _font(16)
+    if overlay == "offline":
+        first = "Offline"
+        second = f"Last {source_time.astimezone(ZoneInfo(timezone_name)).strftime('%b %d %H:%M') if source_time else '—'}"
+    elif overlay == "time_unknown":
+        first, second = "Time not synced", ""
+    else:
+        first, second = "", ""
+    if first:
+        draw.text((OVERLAY["x"], OVERLAY["y"]), _fit_text(draw, first, font, OVERLAY["width"]), font=font, fill=BLACK)
+    if second:
+        draw.text((OVERLAY["x"], OVERLAY["y"] + 20), _fit_text(draw, second, font, OVERLAY["width"]), font=font, fill=BLACK)
+    stream = BytesIO()
+    image.save(stream, format="PNG", optimize=False)
+    return stream.getvalue()

@@ -1,0 +1,55 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add PhotoPainter display",
+        "description": "A device key is generated once after setup. Store it in the display securely; it is never saved in Home Assistant.",
+        "data": {
+          "device_id": "Device ID",
+          "timezone": "Display timezone",
+          "calendar_1": "Star calendar",
+          "calendar_2": "Moon calendar",
+          "weather_entity": "Hourly weather entity",
+          "day_interval_minutes": "Day update interval (minutes)",
+          "night_interval_minutes": "Night update interval (minutes)",
+          "day_start": "Day start",
+          "day_end": "Day end"
+        }
+      },
+      "key": {
+        "title": "Save the PhotoPainter device key",
+        "description": "Copy this one-time key into the display setup before confirming: {device_key}",
+        "data": {
+          "confirm": "I stored the device key securely"
+        }
+      }
+    },
+    "error": {
+      "invalid_options": "The update schedule is invalid."
+    },
+    "abort": {
+      "already_configured": "This device ID is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "PhotoPainter update schedule",
+        "description": "The display applies regenerated frames at its next scheduled connection.",
+        "data": {
+          "day_interval_minutes": "Day update interval (minutes)",
+          "night_interval_minutes": "Night update interval (minutes)",
+          "day_start": "Day start",
+          "day_end": "Day end"
+        }
+      },
+      "key": {
+        "title": "Save the new device key",
+        "description": "Copy this one-time replacement key into the display setup before confirming: {device_key}",
+        "data": {
+          "confirm": "I stored the replacement key securely"
+        }
+      }
+    }
+  }
+}

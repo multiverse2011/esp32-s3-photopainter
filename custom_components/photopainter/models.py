@@ -193,7 +193,7 @@ class RenderedFrame:
     width: int
     height: int
     status_overlay: dict[str, int]
-    snapshot: DisplaySnapshot
+    snapshot: DisplaySnapshot | None
 
     def manifest_fragment(self, path: str) -> dict[str, Any]:
         return {

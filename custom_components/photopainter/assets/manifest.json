@@ -7,6 +7,11 @@
     "font": "materialdesignicons-webfont.ttf",
     "sha256": "61e8aba5a4e981fe22cf7c8e8bcdbea00476e75c62c37f01bf7ee33361d68428",
     "css": "materialdesignicons.css",
+    "fallback_masks": {
+      "file": "fallback-mdi-masks.json",
+      "sha256": "fef3bfc37ded8ccd4bfda27719cc9c6cc1b579f9f5df76031fba25fcd463ce30",
+      "rasterized_from": "materialdesignicons-webfont.ttf"
+    },
     "glyphs": {
       "star-four-points": "F0AE2",
       "moon-waning-crescent": "F0F65",

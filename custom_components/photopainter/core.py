@@ -247,6 +247,7 @@ def normalize_sensor_state(
     unit: str,
     collected_at: datetime,
     source_updated_at: datetime | None = None,
+    temperature: bool = False,
 ) -> SensorReading:
     """Normalise a sensor state without turning unknown into zero."""
 
@@ -263,6 +264,13 @@ def normalize_sensor_state(
     if not math.isfinite(numeric):
         status = "unavailable" if str(state).lower() in {"unknown", "unavailable", "none"} else "unavailable"
         return SensorReading(None, unit, status, collected_at, source_updated_at, "non_numeric")
+    if temperature:
+        normalized = unit.strip().lower().replace("°", "")
+        if normalized in {"f", "fahrenheit"}:
+            numeric = (numeric - 32.0) * 5.0 / 9.0
+            unit = "°C"
+        elif normalized in {"c", "celsius"}:
+            unit = "°C"
     # Avoid retaining -0.0 in serialized/display values.
     if numeric == 0:
         numeric = 0.0
