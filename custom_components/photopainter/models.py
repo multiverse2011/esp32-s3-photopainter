@@ -117,7 +117,7 @@ class ForecastSlot:
 
     @property
     def label(self) -> str:
-        return f"{self.local_time}{' +1d' if self.day_offset else ''}"
+        return self.local_time
 
     def as_dict(self) -> dict[str, Any]:
         return {

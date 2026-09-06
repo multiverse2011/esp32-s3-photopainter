@@ -22,12 +22,16 @@ from .const import (
 )
 
 
-def _entity(domain: str) -> selector.EntitySelector:
-    return selector.EntitySelector(selector.EntitySelectorConfig(domain=domain))
+def _entity(domain: str, device_class: str | None = None) -> selector.EntitySelector:
+    if device_class is None:
+        return selector.EntitySelector(selector.EntitySelectorConfig(domain=domain))
+    return selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=domain, device_class=device_class)
+    )
 
 
-def _optional_entity(domain: str) -> Any:
-    return vol.Any(None, _entity(domain))
+def _optional_entity(domain: str, device_class: str | None = None) -> Any:
+    return vol.Any(None, _entity(domain, device_class))
 
 
 class PhotoPainterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -66,11 +70,11 @@ class PhotoPainterConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional("calendar_2", default=None): _optional_entity("calendar"),
                 vol.Optional("weather_entity", default=None): _optional_entity("weather"),
                 **{
-                    vol.Optional(f"{room}_temperature", default=None): _optional_entity("sensor")
+                    vol.Optional(f"{room}_temperature", default=None): _optional_entity("sensor", "temperature")
                     for room in ROOMS
                 },
                 **{
-                    vol.Optional(f"{room}_humidity", default=None): _optional_entity("sensor")
+                    vol.Optional(f"{room}_humidity", default=None): _optional_entity("sensor", "humidity")
                     for room in ROOMS
                 },
                 vol.Optional("day_interval_minutes", default=DEFAULT_DAY_INTERVAL): vol.Coerce(int),
