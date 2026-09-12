@@ -75,8 +75,24 @@ The final binary SHA-256 is:
 ```
 
 At 15:18:04 it booted, refreshed once from 15:18:10 to 15:18:29, and logged
-`next wake in 691 seconds`, targeting the normal 15:30 schedule. Subsequent normal
-cycle and camera results will be recorded after the observation finishes.
+`next wake in 691 seconds`, targeting the normal 15:30 schedule. Camera checks
+at 15:21:46 and 15:23:51 (more than three and five minutes after refresh completion)
+showed a stable display; UART recorded no intervening cycles, refreshes or resets.
+The next normal cycle succeeded without a reset:
+
+| Time (JST) | Observation |
+| --- | --- |
+| 15:30:00.894 | Next cycle, uptime 717688 ms, `cold_boot_recovery=0` |
+| 15:30:04.239 | WiFi connected successfully |
+| 15:30:11.415 | Panel refresh started |
+| 15:30:30.825 | Panel refresh completed |
+| 15:30:31.161 | WiFi teardown completed; `next wake in 1770 seconds` (16:00) |
+
+Five-second camera sampling captured the panel changing during the refresh and
+returning to the updated dashboard afterwards. No abort, software reboot, or
+intentional-disconnect retry appeared in the normal-run log. The device was left
+running this normal firmware and schedule. The observation covers one scheduled
+reconnection after the initial flash, in addition to the accelerated cycles.
 
 Raw UART logs and webcam images remain in the ignored local directory
 `build/refresh-investigation/`; the report includes only relevant diagnostics.
