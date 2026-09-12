@@ -22,9 +22,6 @@
 #include <string.h>
 #include <time.h>
 
-#ifndef CONFIG_PHOTOPAINTER_HA_MODE
-#define CONFIG_PHOTOPAINTER_HA_MODE 0
-#endif
 #ifndef CONFIG_PHOTOPAINTER_HA_ORIGIN
 #define CONFIG_PHOTOPAINTER_HA_ORIGIN "https://homeassistant.local"
 #endif
@@ -940,10 +937,6 @@ cleanup:
 
 void ha_frame_runtime_app_main(void)
 {
-#if !CONFIG_PHOTOPAINTER_HA_MODE
-    ESP_LOGE(TAG, "HA runtime called without CONFIG_PHOTOPAINTER_HA_MODE");
-    return;
-#else
     esp_err_t nvs_status = nvs_flash_init();
     if (nvs_status != ESP_OK) {
         ESP_LOGE(TAG, "NVS initialization failed: %s", esp_err_to_name(nvs_status));
@@ -952,5 +945,4 @@ void ha_frame_runtime_app_main(void)
     while (true) {
         run_once();
     }
-#endif
 }

@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-/** Entry point for the opt-in HA generated-frame firmware profile. */
+/** Entry point for the Home Assistant generated-frame firmware. */
 void ha_frame_runtime_app_main(void);
 
 #ifdef __cplusplus

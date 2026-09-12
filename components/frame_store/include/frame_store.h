@@ -1,9 +1,8 @@
 /**
  * A/B storage for a validated PhotoPainter 4bpp frame.
  *
- * This component is deliberately opt-in.  A firmware build with the default
- * configuration never looks for or writes a cache partition, so it remains
- * safe with the existing 2 MiB partition table.
+ * Caching is enabled by default and uses the photocache partition in the
+ * supplied partition table. Disable caching for custom layouts without it.
  */
 #ifndef PHOTOPAINTER_FRAME_STORE_H
 #define PHOTOPAINTER_FRAME_STORE_H
@@ -41,7 +40,7 @@ typedef struct {
  * Initialize and scan the optional cache partition.
  *
  * Returns ESP_ERR_NOT_SUPPORTED when caching is disabled at build time and
- * ESP_ERR_NOT_FOUND when the opt-in partition is absent or too small.
+ * ESP_ERR_NOT_FOUND when the configured partition is absent or too small.
  */
 esp_err_t frame_store_init(void);
 
