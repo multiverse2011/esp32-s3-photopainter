@@ -45,3 +45,41 @@ bool ha_frame_should_persist_report(bool network_ready, bool pending_report,
 {
     return !pending_report && (!network_ready || blocked_this_wake);
 }
+
+bool ha_frame_consume_cold_boot_recovery(bool *checked, int reset_reason,
+                                         int deep_sleep_reset_reason)
+{
+    if (checked == NULL || *checked) {
+        return false;
+    }
+    *checked = true;
+    return reset_reason != deep_sleep_reset_reason;
+}
+
+bool ha_frame_should_refresh(bool frame_ready, bool same_frame, bool same_overlay,
+                             bool redisplay_required, bool persisted_force_redisplay,
+                             bool cold_boot_recovery)
+{
+    return frame_ready && (cold_boot_recovery || persisted_force_redisplay ||
+                           redisplay_required || !same_frame || !same_overlay);
+}
+
+bool ha_frame_refresh_blocked(int64_t now_epoch, int64_t displayed_epoch,
+                              uint32_t minimum_seconds, bool cold_boot_recovery)
+{
+    if (cold_boot_recovery || displayed_epoch <= 0 || minimum_seconds == 0u) {
+        return false;
+    }
+    if (now_epoch <= displayed_epoch) {
+        return true;
+    }
+    return (uint64_t)(now_epoch - displayed_epoch) < minimum_seconds;
+}
+
+bool ha_frame_recovery_clear_allowed(bool recovery_pending, bool online_refresh,
+                                     bool panel_refresh_succeeded,
+                                     bool display_state_persisted)
+{
+    return !recovery_pending || (online_refresh && panel_refresh_succeeded &&
+                                 display_state_persisted);
+}

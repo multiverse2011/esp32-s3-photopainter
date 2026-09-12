@@ -34,6 +34,24 @@ bool ha_frame_http_blocks_wake(int status_code);
 bool ha_frame_should_persist_report(bool network_ready, bool pending_report,
                                     bool blocked_this_wake);
 
+/** Consume the one cold-recovery opportunity for a process/boot lifetime. */
+bool ha_frame_consume_cold_boot_recovery(bool *checked, int reset_reason,
+                                         int deep_sleep_reset_reason);
+
+/** Return whether the candidate needs a panel refresh rather than a skip. */
+bool ha_frame_should_refresh(bool frame_ready, bool same_frame, bool same_overlay,
+                             bool redisplay_required, bool persisted_force_redisplay,
+                             bool cold_boot_recovery);
+
+/** Apply the panel minimum interval without trusting equal/backwards time. */
+bool ha_frame_refresh_blocked(int64_t now_epoch, int64_t displayed_epoch,
+                              uint32_t minimum_seconds, bool cold_boot_recovery);
+
+/** A recovery marker is cleared only after an online refresh is durable. */
+bool ha_frame_recovery_clear_allowed(bool recovery_pending, bool online_refresh,
+                                     bool panel_refresh_succeeded,
+                                     bool display_state_persisted);
+
 #ifdef __cplusplus
 }
 #endif

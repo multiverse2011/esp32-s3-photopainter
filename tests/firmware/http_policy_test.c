@@ -62,6 +62,50 @@ static void test_blocked_wake_keeps_report_durable(void)
     assert(!ha_frame_should_persist_report(false, true, true));
 }
 
+static void test_cold_recovery_is_consumed_once(void)
+{
+    bool checked = false;
+    assert(ha_frame_consume_cold_boot_recovery(&checked, 1, 0));
+    assert(!ha_frame_consume_cold_boot_recovery(&checked, 1, 0));
+    checked = false;
+    assert(!ha_frame_consume_cold_boot_recovery(&checked, 0, 0));
+    assert(!ha_frame_consume_cold_boot_recovery(&checked, 1, 0));
+}
+
+static void test_refresh_and_minimum_interval_policy(void)
+{
+    assert(!ha_frame_should_refresh(false, false, false, true, true, true));
+    assert(!ha_frame_should_refresh(true, true, true, false, false, false));
+    assert(ha_frame_should_refresh(true, true, true, false, true, false));
+    assert(ha_frame_should_refresh(true, true, true, false, false, true));
+    assert(ha_frame_should_refresh(true, false, true, false, false, false));
+
+    assert(ha_frame_refresh_blocked(1000, 1000, 300u, false));
+    assert(ha_frame_refresh_blocked(999, 1000, 300u, false));
+    assert(ha_frame_refresh_blocked(1299, 1000, 300u, false));
+    assert(!ha_frame_refresh_blocked(1300, 1000, 300u, false));
+    assert(!ha_frame_refresh_blocked(1000, 1000, 300u, true));
+}
+
+static void test_offline_recovery_marker_waits_for_online_manifest(void)
+{
+    /* The first cold boot may repaint the cached frame while offline. */
+    assert(ha_frame_should_refresh(true, true, true, false, false, true));
+    /* A retained 409 marker must not repaint that unchanged cache every wake. */
+    assert(!ha_frame_should_refresh(true, true, true, false, false, false));
+    /* Once a manifest is available online, the marker forces redisplay. */
+    assert(ha_frame_should_refresh(true, true, true, false, true, false));
+}
+
+static void test_recovery_marker_requires_durable_online_refresh(void)
+{
+    assert(!ha_frame_recovery_clear_allowed(true, false, true, true));
+    assert(!ha_frame_recovery_clear_allowed(true, true, false, true));
+    assert(!ha_frame_recovery_clear_allowed(true, true, true, false));
+    assert(ha_frame_recovery_clear_allowed(true, true, true, true));
+    assert(ha_frame_recovery_clear_allowed(false, false, false, false));
+}
+
 int main(void)
 {
     test_retry_after_bounds();
@@ -69,5 +113,9 @@ int main(void)
     test_rate_limit_uses_bounded_retry_after();
     test_normal_status_keeps_manifest_schedule_eligible();
     test_blocked_wake_keeps_report_durable();
+    test_cold_recovery_is_consumed_once();
+    test_refresh_and_minimum_interval_policy();
+    test_offline_recovery_marker_waits_for_online_manifest();
+    test_recovery_marker_requires_durable_online_refresh();
     return 0;
 }
