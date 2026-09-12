@@ -5,11 +5,6 @@ idf_component_register(
         spi_flash
         wifi_manager
         epd_driver
-        gfx_library
-        weather_service
-        task_service
-        train_service
-        calendar_ui
         i2c_bsp
         axpPower
         nvs_flash

@@ -1,166 +1,148 @@
-# ESP32-S3 E-ink Weather Calendar
+# ESP32-S3 PhotoPainter
 
-A battery-powered smart display using ESP32-S3 and a Waveshare 7.3-inch ACeP 6-color E-Paper display. Shows weather forecast, task list, and train status with current date/time, optimized for low power consumption.
+Firmware for the Waveshare ESP32-S3 PhotoPainter and a Home Assistant custom
+integration that renders an 800×480 household dashboard. Home Assistant renders
+frames; the ESP32 downloads, validates, caches, and displays them.
 
-## Features
+Home Assistant is the only firmware runtime. Local weather/calendar rendering
+and direct OpenWeatherMap, Todoist, and JR East clients have been removed.
 
-- **4-Day Weather Forecast**: Displays weather icons, temperatures, humidity, and wind information
-- **Hourly Weather**: Shows 5-hour forecast with temperature and weather conditions
-- **Task List**: Displays up to 5 tasks from external API
-- **Train Status**: Shows train line delay status (JR East)
-- **Current Date/Time**: Header shows current date and time with SNTP synchronization
-- **Power Efficient**: Deep sleep mode with configurable wake intervals (30min day / 2hr night)
-- **Offline Support**: Caches weather/task/train data when network is unavailable
-- **API Throttling**: Rate-limits OpenWeatherMap API calls to every 3 hours
-- **Power Management**: AXP2101 power management with charging status monitoring
+## Hardware
 
-## Hardware Requirements
+- ESP32-S3 PhotoPainter: 16 MB flash, 8 MB octal PSRAM, 7.3-inch e-paper panel.
+- AXP2101 power management with optional battery operation.
+- SPI: MOSI 11, CLK 10, CS 9, DC 8, RST 12, BUSY 13.
+- I2C: SDA 47, SCL 48.
 
-- **Board**: [Waveshare ESP32-S3 PhotoPainter](https://www.waveshare.com/esp32-s3-photopainter.htm)
-  - ESP32-S3-WROOM-1-N16R8 (16MB Flash, 8MB PSRAM)
-  - AXP2101 power management IC
-  - PCF85063 RTC with backup battery
-  - SHTC3 temperature/humidity sensor
-  - ES7210/ES8311 audio codec (dual microphone array)
-- **Display**: 7.3-inch E Ink Spectra 6 (ACeP 6-Color) E-Paper (800x480 resolution)
-- **Power**: 3.7V lithium battery (optional, with onboard charging)
+The six-color frame profile is `spectra6-ws73-v1`. Its palette mapping still
+requires verification on the physical panel; see `PALETTE_HARDWARE_VERIFIED`
+in [const.py](custom_components/photopainter/const.py).
 
-### Pin Configuration
+## Home Assistant setup
 
-| Function | GPIO Pin |
-|----------|----------|
-| SPI MOSI | 11       |
-| SPI CLK  | 10       |
-| CS       | 9        |
-| DC       | 8        |
-| RST      | 12       |
-| BUSY     | 13       |
-| I2C SDA  | 47       |
-| I2C SCL  | 48       |
+1. Copy the complete [custom_components/photopainter](custom_components/photopainter)
+   directory, including assets and translations, into your Home Assistant
+   configuration directory under `custom_components/photopainter/`.
+2. Restart Home Assistant and add **PhotoPainter** under
+   **Settings → Devices & services → Add integration**.
+3. Choose a unique device ID (for example `hall-display`) and timezone.
+   Assign up to two calendars, four temperature/humidity pairs (Living, Study,
+   Bedroom, Outdoor), and a weather entity supporting hourly forecasts.
+4. Configure the day/night schedule and save the generated device key for
+   firmware provisioning. Home Assistant stores its hash; the device needs the
+   original key.
 
-## Prerequisites
+Missing or unavailable entities display placeholders. The dashboard includes
+up to three events per calendar and four forecast slots at three-hour boundaries.
+Home Assistant supplies the next connection time. The default day/night intervals
+are 30/120 minutes, with a daytime window of 06:00–22:00.
 
-1. **ESP-IDF v5.x** - Install from https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/
-2. **OpenWeatherMap API Key** - Register at https://openweathermap.org/api to get a free API key
+## Build and provision
 
-## Quick Start
+Use an activated ESP-IDF **v5.5.1** terminal:
 
-### 1. Clone and Configure
-
-```bash
-# Clone the repository
-git clone <repository-url>
+```sh
+git clone https://github.com/multiverse2011/esp32-s3-photopainter.git
 cd esp32-s3-photopainter
-
-# Set your WiFi and API credentials using menuconfig
+idf.py set-target esp32s3
 idf.py menuconfig
 ```
 
-Navigate to **Weather Calendar Configuration** and set:
-- **WiFi SSID**: Your WiFi network name
-- **WiFi Password**: Your WiFi password
-- **OpenWeatherMap API Key**: Your API key
-- **Latitude/Longitude**: Your location coordinates
-- **Timezone**: Your POSIX timezone string (e.g., `JST-9` for Japan)
+| Menu | Configuration |
+|---|---|
+| PhotoPainter Configuration | WiFi SSID and password; POSIX timezone for device time |
+| PhotoPainter Configuration | Turn off **Disable deep sleep (debug)** for battery operation |
+| PhotoPainter Home Assistant client | Home Assistant origin, matching device ID, request timeout |
+| PhotoPainter firmware frame cache | Keep the cache enabled with the supplied partition table |
 
-### 2. Build and Flash
+The origin contains only a scheme, host, and optional port (for example
+`https://ha.example.com`). Paths, query strings, and redirects are unsupported.
+HTTPS uses the ESP certificate bundle and requires time synchronization.
+For a trusted network with an HTTP origin such as `http://192.168.1.10:8123`,
+explicitly enable **Allow plain HTTP for the Home Assistant origin**.
 
-```bash
-# Build the project
+```sh
 idf.py build
-
-# Flash to device (adjust port as needed)
-idf.py -p /dev/ttyUSB0 flash
-
-# Monitor serial output
-idf.py -p /dev/ttyUSB0 monitor
+idf.py -p PORT flash monitor
 ```
 
-### 3. Expected Behavior
+Replace `PORT` with your serial port, such as `COM5` or `/dev/ttyUSB0`.
+On first boot without a stored key, paste the device key into the **UART0**
+prompt and press Enter within 60 seconds. The input is not echoed. Firmware
+stores the key in NVS namespace `photopainter`, key `ha_key`; a timeout retries
+on the next cycle. WiFi, origin, and device ID are build settings, not UART prompts.
 
-1. Device powers on and initializes components (including AXP2101 power management)
-2. Connects to WiFi network
-3. Synchronizes time via SNTP
-4. Fetches data from APIs (weather, tasks, train status)
-5. Renders and displays all information on E-Paper
-6. Enters deep sleep for configured interval
-7. Wakes up and repeats from step 2
+The supplied defaults disable deep sleep (`CONFIG_DISABLE_DEEP_SLEEP=y`).
+Existing `sdkconfig` values take precedence over `sdkconfig.defaults`.
+NVS encryption is not enabled by the defaults. Keep credentials out of commits.
+HA supports key rotation; the firmware currently prompts only when `ha_key` is
+absent, so replacing a key also requires updating its stored device credential.
 
-**Note**: Task and train services are optional - the device will continue to operate with graceful degradation if these services are unavailable.
+## Migrating an existing device
 
-## Configuration Options
+There is no mode selector or `CONFIG_PHOTOPAINTER_HA_MODE` setting anymore.
+Rebuilds always use Home Assistant, including builds using an old `sdkconfig`
+where HA mode was disabled. Configure the integration, origin, device ID, and
+key before expecting the dashboard to update. Old API keys, location settings,
+and firmware day/night intervals are no longer used; configure content and
+scheduling in Home Assistant instead.
 
-All configuration is done via `idf.py menuconfig` under **Weather Calendar Configuration**:
+Use the supplied [partitions.csv](partitions.csv) when flashing. It contains a
+3 MiB factory application and a 1 MiB `photocache` partition for the A/B frame
+cache; older layouts without that partition cannot provide persistent recovery.
+There are no OTA slots. Historical designs remain in [specs/](specs/).
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| WiFi SSID | - | WiFi network name |
-| WiFi Password | - | WiFi password |
-| API Key | - | OpenWeatherMap API key |
-| Latitude | 35.6762 | Location latitude |
-| Longitude | 139.6503 | Location longitude |
-| Timezone | JST-9 | POSIX timezone |
-| Day Update Interval | 30 | Minutes between updates (6AM-10PM) |
-| Night Update Interval | 120 | Minutes between updates (10PM-6AM) |
+## Operation and troubleshooting
 
-## Project Structure
+The A/B cache retains the last verified frame. Firmware supports cold-boot
+redisplay, offline/time-unknown overlays, and durable reports retried after
+communication failures. Unchanged frames can skip refreshes; normal refreshes
+have a five-minute minimum interval with a cold-boot recovery exception.
 
+HA exposes Pending/Displayed frame images, status sensors, update/connection
+binary sensors, and a **Regenerate display** button. Displayed frame reflects a
+successful device report. Regenerate display prepares the next frame and does
+not wake a sleeping device.
+
+| Symptom | Check |
+|---|---|
+| No HA dashboard | WiFi, origin, matching device ID, and UART key provisioning |
+| HTTPS failure | DNS, certificate trust, and SNTP synchronization |
+| HTTP rejected | Explicit plain-HTTP option |
+| Authentication failure | Device ID/key pairing, including key rotation |
+| Panel unchanged | Next connection time, Last error, Last seen, and display reports |
+| Cache not restored | Cache configuration and `photocache` partition |
+| Panel refresh failure | BUSY/SPI wiring and serial logs |
+| Missing content | Assigned entities and hourly forecast support |
+| Device stays awake | Disable the debug deep-sleep override |
+
+Physical palette, panel, power, and network behavior require hardware testing.
+
+## Development and tests
+
+```sh
+python -m pip install Pillow==12.3.0 tzdata
+python -m unittest discover -s tests/photopainter -p "test_*.py"
 ```
-esp32-s3-photopainter/
-├── main/
-│   ├── main.c              # Application entry point
-│   ├── CMakeLists.txt      # Main component configuration
-│   └── Kconfig.projbuild   # Configuration options
-├── components/
-│   ├── wifi_manager/       # WiFi and SNTP handling
-│   ├── epd_driver/         # E-Paper display driver
-│   ├── gfx_library/        # Graphics primitives and fonts
-│   ├── weather_service/    # OpenWeatherMap API client
-│   ├── task_service/       # Task list API client
-│   ├── train_service/      # Train status API client (JR East)
-│   ├── calendar_ui/        # UI layout and weather icons
-│   ├── axpPower/           # AXP2101 power management
-│   ├── i2c_bsp/            # I2C driver
-│   └── epaper_port/        # E-Paper porting layer
-├── sdkconfig.defaults      # Default ESP-IDF settings
-├── partitions.csv          # Partition table
-└── CMakeLists.txt          # Project configuration
+
+Run the HA adapter smoke test in the target image (POSIX shell):
+
+```sh
+docker run --rm --entrypoint python -v "$PWD:/project" -w /project ghcr.io/home-assistant/home-assistant:2026.9.1 tests/photopainter/ha_smoke.py
 ```
 
-## Troubleshooting
+See [tests/firmware/README.md](tests/firmware/README.md) for native C policy tests.
+These tests do not replace an ESP-IDF build or hardware verification.
 
-### Display Not Updating
-- Check BUSY pin connection
-- Verify SPI wiring
-- Monitor serial output for timeout errors
+| Path | Purpose |
+|---|---|
+| [main/](main/) | Home Assistant display runtime |
+| [custom_components/photopainter/](custom_components/photopainter/) | HA configuration, collection, rendering, API, and entities |
+| [components/ha_frame_client/](components/ha_frame_client/) | HTTP client and recovery policy |
+| [components/frame_store/](components/frame_store/) | Persistent A/B frame cache |
+| [components/epd_driver/](components/epd_driver/) | Panel driver |
+| [components/](components/) | WiFi/SNTP, power, I2C, and display support |
 
-### WiFi Connection Failed
-- Verify SSID and password
-- Check WiFi signal strength
-- Device retries connection 3 times before using cached data
-
-### Weather Data Not Loading
-- Verify API key is valid
-- Check internet connectivity
-- API calls are throttled to every 3 hours
-
-### Display Shows "Cached" Indicator
-- Device is using previously fetched weather data
-- This is normal if network is unavailable or API is throttled
-- Data remains valid for 24 hours
-
-### Task/Train Data Not Showing
-- These services are optional and will gracefully degrade
-- Check API endpoint configuration
-- Device will continue operating with only weather data
-
-## Power Consumption
-
-The device is optimized for battery operation:
-- **Active**: ~150mA during WiFi and display refresh
-- **Deep Sleep**: ~10µA
-- **Estimated Battery Life**: Several weeks on 2000mAh battery (depending on update frequency)
-
-## License
-
-MIT License - See LICENSE file for details
+Bundled font and icon licenses are in
+[assets/](custom_components/photopainter/assets/). Consult individual source
+notices for other bundled code.
