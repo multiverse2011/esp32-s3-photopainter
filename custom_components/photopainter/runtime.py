@@ -6,6 +6,7 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import math
 import re
 import time
 from dataclasses import dataclass
@@ -21,6 +22,19 @@ from .models import RenderedFrame
 
 FRAME_ID_RE = re.compile(r"^[0-9a-f]{64}$")
 REPORT_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+REPORT_REQUIRED_FIELDS = (
+    "boot_id",
+    "firmware_version",
+    "received_frame_id",
+    "displayed_frame_id",
+    "display_result",
+    "display_completed_at",
+    "local_overlay",
+    "battery_percent",
+    "wifi_rssi_dbm",
+    "next_wake_at",
+    "error_code",
+)
 
 
 @dataclass(slots=True)
@@ -31,16 +45,137 @@ class DeviceReportResult:
     error: str | None = None
 
 
+@dataclass(slots=True)
+class _ValidatedReport:
+    """Typed report values, ready for semantic checks and state updates."""
+
+    report_id: str
+    boot_id: str
+    firmware_version: str
+    received_frame_id: str | None
+    displayed_frame_id: str | None
+    display_result: str
+    display_completed_at: datetime | None
+    local_overlay: str
+    overlay_source_time: datetime | None
+    battery_percent: float | None
+    wifi_signal_dbm: int | None
+    next_wake_at: datetime | None
+    error_code: str | None
+
+
 def _parse_time(value: Any) -> datetime | None:
     if not isinstance(value, str):
         return None
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
+        if parsed.tzinfo is None:
+            return None
+        return parsed.astimezone(timezone.utc)
+    except (ValueError, OverflowError):
         return None
-    if parsed.tzinfo is None:
-        return None
-    return parsed.astimezone(timezone.utc)
+
+
+def _validate_report_payload(payload: dict[str, Any], report_id: str) -> _ValidatedReport | DeviceReportResult:
+    """Validate and normalize a new report without changing runtime state."""
+
+    # ``bool`` is an ``int`` subclass, and Python also considers 1.0 equal to
+    # 1.  The wire contract requires a JSON integer with the exact value 1.
+    if type(payload.get("schema_version")) is not int or payload["schema_version"] != SCHEMA_VERSION:
+        return DeviceReportResult(False, report_id, 422, "unsupported_schema")
+
+    missing = next((field for field in REPORT_REQUIRED_FIELDS if field not in payload), None)
+    if missing is not None:
+        return DeviceReportResult(False, report_id, 422, f"missing_{missing}")
+
+    boot_id = payload["boot_id"]
+    if not isinstance(boot_id, str) or not 1 <= len(boot_id) <= 128:
+        return DeviceReportResult(False, report_id, 422, "invalid_boot_id")
+
+    firmware_version = payload["firmware_version"]
+    if not isinstance(firmware_version, str) or not 1 <= len(firmware_version) <= 64:
+        return DeviceReportResult(False, report_id, 422, "invalid_firmware_version")
+
+    received_id = payload["received_frame_id"]
+    displayed_id = payload["displayed_frame_id"]
+    for frame_id in (received_id, displayed_id):
+        if frame_id is not None and (not isinstance(frame_id, str) or not FRAME_ID_RE.fullmatch(frame_id)):
+            return DeviceReportResult(False, report_id, 422, "invalid_frame_id")
+
+    display_result = payload["display_result"]
+    if not isinstance(display_result, str) or display_result not in {"success", "skipped", "failed"}:
+        return DeviceReportResult(False, report_id, 422, "invalid_display_result")
+
+    def parse_required_time(field: str, error: str) -> datetime | None | DeviceReportResult:
+        raw = payload[field]
+        if raw is None:
+            return None
+        parsed = _parse_time(raw)
+        if parsed is None:
+            return DeviceReportResult(False, report_id, 422, error)
+        return parsed
+
+    completion_time = parse_required_time("display_completed_at", "invalid_display_completed_at")
+    if isinstance(completion_time, DeviceReportResult):
+        return completion_time
+    next_wake_at = parse_required_time("next_wake_at", "invalid_next_wake_at")
+    if isinstance(next_wake_at, DeviceReportResult):
+        return next_wake_at
+
+    overlay = payload["local_overlay"]
+    if not isinstance(overlay, str) or overlay not in {"none", "offline", "time_unknown"}:
+        return DeviceReportResult(False, report_id, 422, "invalid_local_overlay")
+
+    overlay_source_time: datetime | None = None
+    if "overlay_source_time" in payload and payload["overlay_source_time"] is not None:
+        overlay_source_time = _parse_time(payload["overlay_source_time"])
+        if overlay_source_time is None:
+            return DeviceReportResult(False, report_id, 422, "invalid_overlay_source_time")
+
+    battery_raw = payload["battery_percent"]
+    battery_percent: float | None = None
+    if battery_raw is not None:
+        if isinstance(battery_raw, bool) or not isinstance(battery_raw, (int, float)):
+            return DeviceReportResult(False, report_id, 422, "invalid_battery_percent")
+        if isinstance(battery_raw, float) and not math.isfinite(battery_raw):
+            return DeviceReportResult(False, report_id, 422, "invalid_battery_percent")
+        if not 0 <= battery_raw <= 100:
+            return DeviceReportResult(False, report_id, 422, "invalid_battery_percent")
+        battery_percent = float(battery_raw)
+
+    rssi_raw = payload["wifi_rssi_dbm"]
+    wifi_signal_dbm: int | None = None
+    if rssi_raw is not None:
+        if isinstance(rssi_raw, bool) or not isinstance(rssi_raw, int) or not -150 <= rssi_raw <= 0:
+            return DeviceReportResult(False, report_id, 422, "invalid_wifi_rssi_dbm")
+        wifi_signal_dbm = rssi_raw
+
+    error_code = payload["error_code"]
+    if error_code is not None and not isinstance(error_code, str):
+        return DeviceReportResult(False, report_id, 422, "invalid_error_code")
+
+    if display_result == "success" and displayed_id is None:
+        return DeviceReportResult(False, report_id, 409, "unknown_displayed_frame")
+    if display_result == "success" and completion_time is None:
+        return DeviceReportResult(False, report_id, 422, "invalid_display_completed_at")
+    if display_result == "skipped" and displayed_id is None:
+        return DeviceReportResult(False, report_id, 422, "missing_skipped_frame")
+
+    return _ValidatedReport(
+        report_id=report_id,
+        boot_id=boot_id,
+        firmware_version=firmware_version,
+        received_frame_id=received_id,
+        displayed_frame_id=displayed_id,
+        display_result=display_result,
+        display_completed_at=completion_time,
+        local_overlay=overlay,
+        overlay_source_time=overlay_source_time,
+        battery_percent=battery_percent,
+        wifi_signal_dbm=wifi_signal_dbm,
+        next_wake_at=next_wake_at,
+        error_code=error_code,
+    )
 
 
 def _frame_json(frame: RenderedFrame | None) -> dict[str, Any] | None:
@@ -238,44 +373,24 @@ class PhotoPainterRuntime:
         async with self._lock:
             if report_id in self._report_ids:
                 return DeviceReportResult(True, report_id)
-            if payload.get("schema_version") != SCHEMA_VERSION:
-                return DeviceReportResult(False, report_id, 422, "unsupported_schema")
-            if not isinstance(payload.get("boot_id"), str) or not 1 <= len(payload["boot_id"]) <= 128:
-                return DeviceReportResult(False, report_id, 422, "invalid_boot_id")
-            if not isinstance(payload.get("firmware_version"), str) or not 1 <= len(payload["firmware_version"]) <= 64:
-                return DeviceReportResult(False, report_id, 422, "invalid_firmware_version")
-            received_id = payload.get("received_frame_id")
-            displayed_id = payload.get("displayed_frame_id")
-            for value in (received_id, displayed_id):
-                if value is not None and (not isinstance(value, str) or not FRAME_ID_RE.fullmatch(value)):
-                    return DeviceReportResult(False, report_id, 422, "invalid_frame_id")
-            if received_id and received_id not in self._frames:
+            validated = _validate_report_payload(payload, report_id)
+            if isinstance(validated, DeviceReportResult):
+                return validated
+            received_id = validated.received_frame_id
+            displayed_id = validated.displayed_frame_id
+            if received_id is not None and received_id not in self._frames:
                 return DeviceReportResult(False, report_id, 409, "unknown_received_frame")
-            if displayed_id and displayed_id not in self._frames:
+            if displayed_id is not None and displayed_id not in self._frames:
                 return DeviceReportResult(False, report_id, 409, "unknown_displayed_frame")
-            result = payload.get("display_result")
-            if not isinstance(result, str):
-                return DeviceReportResult(False, report_id, 422, "invalid_display_result")
-            if result not in {"success", "skipped", "failed"}:
-                return DeviceReportResult(False, report_id, 422, "invalid_display_result")
-            local_overlay = payload.get("local_overlay")
-            if not isinstance(local_overlay, str) or local_overlay not in {"none", "offline", "time_unknown"}:
-                return DeviceReportResult(False, report_id, 422, "invalid_local_overlay")
-            overlay_source_raw = payload.get("overlay_source_time")
-            if overlay_source_raw is not None and _parse_time(overlay_source_raw) is None:
-                return DeviceReportResult(False, report_id, 422, "invalid_overlay_source_time")
-            next_wake_raw = payload.get("next_wake_at")
-            if next_wake_raw is not None and _parse_time(next_wake_raw) is None:
-                return DeviceReportResult(False, report_id, 422, "invalid_next_wake_at")
-            if result == "skipped" and not displayed_id:
-                return DeviceReportResult(False, report_id, 422, "missing_skipped_frame")
-            completion_time = _parse_time(payload.get("display_completed_at"))
+            result = validated.display_result
+            completion_time = validated.display_completed_at
             stale_success = False
             if result == "success":
-                if not displayed_id:
-                    return DeviceReportResult(False, report_id, 409, "unknown_displayed_frame")
-                if completion_time is None:
-                    return DeviceReportResult(False, report_id, 422, "invalid_display_completed_at")
+                # The validator guarantees both values for a successful
+                # report; retaining the guard keeps this invariant explicit
+                # for type checkers and future callers.
+                if displayed_id is None or completion_time is None:
+                    return DeviceReportResult(False, report_id, 422, "invalid_display_report")
                 candidate = self._frames[displayed_id]
                 if self.displayed_frame is not None and candidate.generated_at < self.displayed_frame.generated_at:
                     stale_success = True
@@ -289,19 +404,17 @@ class PhotoPainterRuntime:
                 if not stale_success:
                     self.displayed_frame = candidate
                     self.last_displayed = completion_time
-                    self.local_overlay = local_overlay
-                    self.overlay_source_time = _parse_time(overlay_source_raw)
+                    self.local_overlay = validated.local_overlay
+                    self.overlay_source_time = validated.overlay_source_time
                 if not stale_success and self.pending_frame and self.displayed_frame.frame_id == self.pending_frame.frame_id:
                     self.redisplay_required = False
             self.last_seen = datetime.now(timezone.utc)
             if not stale_success:
-                battery = payload.get("battery_percent")
-                self.battery_percent = float(battery) if isinstance(battery, (int, float)) and not isinstance(battery, bool) and 0 <= battery <= 100 else None
-                rssi = payload.get("wifi_rssi_dbm")
-                self.wifi_signal_dbm = int(rssi) if isinstance(rssi, int) and -150 <= rssi <= 0 else None
-                self.next_wake_at = _parse_time(next_wake_raw)
-                self.last_error = payload.get("error_code") if isinstance(payload.get("error_code"), str) else None
-                self.firmware_version = payload["firmware_version"]
+                self.battery_percent = validated.battery_percent
+                self.wifi_signal_dbm = validated.wifi_signal_dbm
+                self.next_wake_at = validated.next_wake_at
+                self.last_error = validated.error_code
+                self.firmware_version = validated.firmware_version
             self._report_ids.append(report_id)
             self._report_ids = self._report_ids[-64:]
             await self._async_save()
