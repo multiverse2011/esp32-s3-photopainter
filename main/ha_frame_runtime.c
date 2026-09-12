@@ -13,6 +13,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "ha_frame_client.h"
+#include "ha_frame_policy.h"
 #include "driver/uart.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -49,10 +50,12 @@
 #define HA_KEY_MAX 256u
 #define DISPLAY_STATE_NVS_NAME "display_state"
 #define PENDING_REPORT_NVS_NAME "pending_report"
+#define FORCE_REDISPLAY_NVS_NAME "force_redisplay"
 #define DISPLAY_STATE_MAGIC 0x50504431u
 #define RUNTIME_DEADLINE_US 180000000LL
 
 static uint32_t s_report_sequence;
+static bool s_cold_boot_recovery_checked;
 
 typedef struct __attribute__((packed)) {
     uint32_t magic;
@@ -146,6 +149,77 @@ static esp_err_t clear_pending_report(void)
         nvs_close(handle);
     }
     return ret;
+}
+
+static bool load_force_redisplay(void)
+{
+    nvs_handle_t handle;
+    esp_err_t ret = nvs_open(HA_KEY_NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (ret != ESP_OK) {
+        return false;
+    }
+    uint8_t value = 0;
+    ret = nvs_get_u8(handle, FORCE_REDISPLAY_NVS_NAME, &value);
+    nvs_close(handle);
+    return ret == ESP_OK && value != 0;
+}
+
+static esp_err_t save_force_redisplay(void)
+{
+    nvs_handle_t handle;
+    esp_err_t ret = nvs_open(HA_KEY_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (ret == ESP_OK) {
+        ret = nvs_set_u8(handle, FORCE_REDISPLAY_NVS_NAME, 1);
+        if (ret == ESP_OK) {
+            ret = nvs_commit(handle);
+        }
+        nvs_close(handle);
+    }
+    return ret;
+}
+
+static esp_err_t clear_force_redisplay(void)
+{
+    nvs_handle_t handle;
+    esp_err_t ret = nvs_open(HA_KEY_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (ret == ESP_OK) {
+        ret = nvs_erase_key(handle, FORCE_REDISPLAY_NVS_NAME);
+        if (ret == ESP_ERR_NVS_NOT_FOUND) {
+            ret = ESP_OK;
+        }
+        if (ret == ESP_OK) {
+            ret = nvs_commit(handle);
+        }
+        nvs_close(handle);
+    }
+    return ret;
+}
+
+static bool persist_force_redisplay(bool *force_redisplay)
+{
+    if (force_redisplay == NULL) {
+        return false;
+    }
+    if (*force_redisplay) {
+        return true;
+    }
+    esp_err_t ret = save_force_redisplay();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "could not persist forced redisplay marker: %s", esp_err_to_name(ret));
+        return false;
+    }
+    *force_redisplay = true;
+    return true;
+}
+
+static bool acknowledge_unknown_report(bool *force_redisplay)
+{
+    /* The marker is the recovery record.  Persist it before deleting the
+       report so a power loss cannot turn a 409 into a lost recovery. */
+    if (!persist_force_redisplay(force_redisplay)) {
+        return false;
+    }
+    return clear_pending_report() == ESP_OK;
 }
 
 static bool deadline_expired(int64_t deadline_us)
@@ -481,6 +555,39 @@ static esp_err_t init_network(bool *initialized, bool *connected)
     return wifi_manager_sync_time(SNTP_SYNC_TIMEOUT_MS);
 }
 
+static void apply_http_status_policy(const ha_frame_client_t *client,
+                                     uint32_t *cooldown_seconds,
+                                     bool *explicit_cooldown,
+                                     bool *block_requests)
+{
+    if (client == NULL || cooldown_seconds == NULL || explicit_cooldown == NULL ||
+        block_requests == NULL || client->last_http_status <= 0) {
+        return;
+    }
+    bool status_is_explicit = false;
+    uint32_t fallback = FALLBACK_POLL_SECONDS;
+    uint32_t selected = ha_frame_http_cooldown_seconds(
+        client->last_http_status, client->retry_after_seconds, fallback,
+        &status_is_explicit);
+    if (status_is_explicit) {
+        *cooldown_seconds = selected;
+        *explicit_cooldown = true;
+    } else if (*cooldown_seconds < selected) {
+        *cooldown_seconds = selected;
+    }
+    if (ha_frame_http_blocks_wake(client->last_http_status)) {
+        *block_requests = true;
+    }
+}
+
+static bool consume_cold_boot_recovery(void)
+{
+    return ha_frame_consume_cold_boot_recovery(
+        &s_cold_boot_recovery_checked,
+        (int)esp_reset_reason(),
+        (int)ESP_RST_DEEPSLEEP);
+}
+
 static void run_once(void)
 {
 #ifndef CONFIG_PHOTOPAINTER_ENABLE_CACHE
@@ -510,10 +617,15 @@ static void run_once(void)
     bool have_manifest = false;
     bool frame_ready = false;
     bool cache_commit_failed = false;
+    bool cold_boot_recovery = consume_cold_boot_recovery();
     bool pending_valid = load_pending_report(&pending_report) == ESP_OK;
     bool state_valid = load_display_state(&display_state) == ESP_OK;
+    bool force_redisplay = load_force_redisplay();
     bool current_report_sent = false;
     bool explicit_cooldown = false;
+    bool block_requests = false;
+    bool panel_refresh_succeeded = false;
+    bool display_state_persisted = false;
     ha_frame_display_result_t display_result = HA_FRAME_RESULT_FAILED;
     ha_frame_overlay_t local_overlay = HA_FRAME_OVERLAY_OFFLINE;
     time_t overlay_source_time = 0;
@@ -522,6 +634,12 @@ static void run_once(void)
     int battery_percent = -1;
     int wifi_rssi_dbm = 0;
     uint32_t cooldown_seconds = FALLBACK_POLL_SECONDS;
+
+    if (cold_boot_recovery) {
+        /* Keep the recovery request durable if this boot loses power or
+           cannot reach HA before the first successful panel state save. */
+        (void)persist_force_redisplay(&force_redisplay);
+    }
 
     epd_driver_set_deadline_us(deadline_us);
 
@@ -596,9 +714,8 @@ static void run_once(void)
             have_manifest = true;
         } else {
             error_code = "manifest";
-            cooldown_seconds = client.last_http_status == 401 || client.last_http_status == 403 ?
-                               7200u : FALLBACK_POLL_SECONDS;
-            explicit_cooldown = client.last_http_status == 401 || client.last_http_status == 403;
+            apply_http_status_policy(&client, &cooldown_seconds, &explicit_cooldown,
+                                     &block_requests);
         }
     }
 
@@ -638,9 +755,8 @@ static void run_once(void)
                 }
             } else {
                 error_code = "frame";
-                cooldown_seconds = client.last_http_status == 401 || client.last_http_status == 403 ?
-                                   7200u : FALLBACK_POLL_SECONDS;
-                explicit_cooldown = client.last_http_status == 401 || client.last_http_status == 403;
+                apply_http_status_policy(&client, &cooldown_seconds, &explicit_cooldown,
+                                         &block_requests);
             }
         }
     }
@@ -667,12 +783,16 @@ static void run_once(void)
             (time_valid ? HA_FRAME_OVERLAY_NONE : HA_FRAME_OVERLAY_TIME_UNKNOWN) : HA_FRAME_OVERLAY_OFFLINE;
         bool same_frame = state_valid && memcmp(display_state.frame_sha256, current_meta.frame_sha256,
                                                  FRAME_STORE_SHA256_BYTES) == 0;
-        bool dedup = same_frame && !manifest.redisplay_required &&
-                     display_state.overlay == (uint8_t)desired_overlay;
-        bool refresh_blocked = state_valid && display_state.displayed_at > 0 &&
-                               now > display_state.displayed_at &&
-                               (now - display_state.displayed_at) < MIN_PANEL_REFRESH_SECONDS;
-        if (dedup) {
+        bool same_overlay = state_valid &&
+                            display_state.overlay == (uint8_t)desired_overlay;
+        bool online_force_redisplay = force_redisplay && network_ready && have_manifest;
+        bool should_refresh = ha_frame_should_refresh(
+            frame_ready, same_frame, same_overlay, manifest.redisplay_required,
+            online_force_redisplay, cold_boot_recovery);
+        bool refresh_blocked = ha_frame_refresh_blocked(
+            (int64_t)now, state_valid ? display_state.displayed_at : 0,
+            MIN_PANEL_REFRESH_SECONDS, cold_boot_recovery);
+        if (!should_refresh) {
             display_result = HA_FRAME_RESULT_SKIPPED;
             snprintf(displayed_id, sizeof(displayed_id), "%s", candidate_id);
             local_overlay = (ha_frame_overlay_t)display_state.overlay;
@@ -690,6 +810,7 @@ static void run_once(void)
                 draw_local_overlay(frame, local_overlay);
             }
             if (!deadline_expired(deadline_us) && epd_driver_refresh() == ESP_OK) {
+                panel_refresh_succeeded = true;
                 display_result = HA_FRAME_RESULT_SUCCESS;
                 snprintf(displayed_id, sizeof(displayed_id), "%s", candidate_id);
                 durable_display_state_t new_state = {
@@ -699,11 +820,24 @@ static void run_once(void)
                     .overlay = (uint8_t)local_overlay,
                 };
                 memcpy(new_state.frame_sha256, current_meta.frame_sha256, FRAME_STORE_SHA256_BYTES);
-                if (save_display_state(&new_state) != ESP_OK) {
+                esp_err_t state_status = save_display_state(&new_state);
+                display_state_persisted = state_status == ESP_OK;
+                if (!display_state_persisted) {
                     ESP_LOGW(TAG, "display state could not be persisted; report remains retryable");
+                } else {
+                    display_state = new_state;
+                    state_valid = true;
+                    if (force_redisplay &&
+                        ha_frame_recovery_clear_allowed(
+                            true, network_ready && have_manifest,
+                            panel_refresh_succeeded, display_state_persisted)) {
+                        if (clear_force_redisplay() == ESP_OK) {
+                            force_redisplay = false;
+                        } else {
+                            ESP_LOGW(TAG, "forced redisplay marker could not be cleared");
+                        }
+                    }
                 }
-                display_state = new_state;
-                state_valid = true;
             } else {
                 error_code = "display_refresh";
             }
@@ -718,40 +852,56 @@ static void run_once(void)
                 local_overlay, overlay_source_time, battery_percent, wifi_rssi_dbm,
                 display_result == HA_FRAME_RESULT_FAILED ? error_code : NULL);
 
-    if (network_ready && client_ready && pending_valid && !deadline_expired(deadline_us)) {
+    if (network_ready && client_ready && pending_valid && !block_requests &&
+        !deadline_expired(deadline_us)) {
         esp_err_t pending_status = ha_frame_client_post_report(&client, &pending_report);
-        if (pending_status == ESP_OK || client.last_http_status == 409) {
-            (void)clear_pending_report();
-            pending_valid = false;
-        } else if (client.last_http_status == 401 || client.last_http_status == 403) {
-            cooldown_seconds = 7200u;
-            explicit_cooldown = true;
-        } else if (client.last_http_status == 429 && client.retry_after_seconds > 0) {
-            cooldown_seconds = client.retry_after_seconds < MIN_SLEEP_SECONDS ?
-                               MIN_SLEEP_SECONDS : client.retry_after_seconds;
-            if (cooldown_seconds > 7200u) cooldown_seconds = 7200u;
-            explicit_cooldown = true;
-        }
-    }
-    if (network_ready && client_ready && !pending_valid && !deadline_expired(deadline_us)) {
-        if (save_pending_report(&current_report) == ESP_OK) {
-            esp_err_t report_status = ha_frame_client_post_report(&client, &current_report);
-            if (report_status == ESP_OK) {
-                (void)clear_pending_report();
-                current_report_sent = true;
-            } else if (client.last_http_status == 409) {
-                (void)clear_pending_report();
-            } else if (client.last_http_status == 401 || client.last_http_status == 403) {
-                cooldown_seconds = 7200u;
-                explicit_cooldown = true;
-            } else if (client.last_http_status == 429 && client.retry_after_seconds > 0) {
-                cooldown_seconds = client.retry_after_seconds < MIN_SLEEP_SECONDS ?
-                                   MIN_SLEEP_SECONDS : client.retry_after_seconds;
-                if (cooldown_seconds > 7200u) cooldown_seconds = 7200u;
-                explicit_cooldown = true;
+        apply_http_status_policy(&client, &cooldown_seconds, &explicit_cooldown,
+                                 &block_requests);
+        if (pending_status == ESP_OK) {
+            esp_err_t clear_status = clear_pending_report();
+            if (clear_status == ESP_OK) {
+                pending_valid = false;
+            } else {
+                ESP_LOGW(TAG, "accepted pending report could not be cleared: %s",
+                         esp_err_to_name(clear_status));
+            }
+        } else if (client.last_http_status == 409) {
+            if (acknowledge_unknown_report(&force_redisplay)) {
+                pending_valid = false;
+            } else {
+                ESP_LOGW(TAG, "unknown-frame pending report remains durable");
+                block_requests = true;
             }
         }
-    } else if (!network_ready && !pending_valid) {
+    }
+    if (network_ready && client_ready && !pending_valid && !block_requests &&
+        !deadline_expired(deadline_us)) {
+        if (save_pending_report(&current_report) == ESP_OK) {
+            pending_valid = true;
+            esp_err_t report_status = ha_frame_client_post_report(&client, &current_report);
+            apply_http_status_policy(&client, &cooldown_seconds, &explicit_cooldown,
+                                     &block_requests);
+            if (report_status == ESP_OK) {
+                current_report_sent = true;
+                esp_err_t clear_status = clear_pending_report();
+                if (clear_status == ESP_OK) {
+                    pending_valid = false;
+                } else {
+                    ESP_LOGW(TAG, "accepted current report could not be cleared: %s",
+                             esp_err_to_name(clear_status));
+                    block_requests = true;
+                }
+            } else if (client.last_http_status == 409) {
+                if (acknowledge_unknown_report(&force_redisplay)) {
+                    pending_valid = false;
+                } else {
+                    ESP_LOGW(TAG, "unknown-frame current report remains durable");
+                    block_requests = true;
+                }
+            }
+        }
+    } else if (ha_frame_should_persist_report(network_ready, pending_valid,
+                                               block_requests)) {
         (void)save_pending_report(&current_report);
     }
 
