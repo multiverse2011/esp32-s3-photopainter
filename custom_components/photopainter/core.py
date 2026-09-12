@@ -131,6 +131,21 @@ def _calendar_event(raw: Any, *, tz: ZoneInfo, now: datetime) -> CalendarEvent |
     )
 
 
+def calendar_time_label(event: CalendarEvent, display_date: date) -> str:
+    """Return the time column text, dated so today and tomorrow never blur."""
+
+    # A multi-day event is shown on the day the reader is looking at, not the
+    # day it started.
+    day = max(event.start.date(), display_date)
+    if event.all_day:
+        suffix = "all"
+    elif event.ongoing:
+        suffix = "Now"
+    else:
+        suffix = event.start.strftime("%H:%M")
+    return f"{day.month}/{day.day} {suffix}"
+
+
 def normalize_calendar_events(
     raw_events: Iterable[Any] | None,
     *,
@@ -181,7 +196,9 @@ def normalize_calendar_events(
 
     day_start = datetime.combine(display_date, time.min, tzinfo=tz)
     day_end = day_start + timedelta(days=1)
-    parsed: list[CalendarEvent] = []
+    window_end = day_start + timedelta(days=2)
+    today: list[CalendarEvent] = []
+    tomorrow: list[CalendarEvent] = []
     invalid_count = 0
     seen: set[tuple[str, str, str]] = set()
     raw_list = list(raw_events)
@@ -192,10 +209,8 @@ def normalize_calendar_events(
             invalid_count += 1
             continue
         # End dates for all-day events are exclusive, and timed events need an
-        # actual overlap with today's local range.
-        if event.end <= day_start or event.start >= day_end:
-            continue
-        if not event.all_day and event.end <= local_now:
+        # actual overlap with the two-day window.
+        if event.end <= day_start or event.start >= window_end:
             continue
         identity = (
             event.source_event_id or "",
@@ -204,11 +219,18 @@ def normalize_calendar_events(
         )
         if identity in seen:
             continue
-        seen.add(identity)
         event.ongoing = not event.all_day and event.start <= local_now < event.end
-        parsed.append(event)
+        # An event touching today belongs to today even when it runs on into
+        # tomorrow, so it is listed once rather than in both buckets.
+        if event.start < day_end:
+            if not event.all_day and event.end <= local_now:
+                continue
+            today.append(event)
+        else:
+            tomorrow.append(event)
+        seen.add(identity)
 
-    parsed.sort(
+    today.sort(
         key=lambda event: (
             0 if event.all_day else 1 if event.ongoing else 2,
             event.start,
@@ -216,14 +238,18 @@ def normalize_calendar_events(
             event.title,
         )
     )
-    visible = parsed[:3]
-    remaining: int | None = max(0, len(parsed) - len(visible))
+    tomorrow.sort(key=lambda event: (0 if event.all_day else 1, event.start, event.end, event.title))
+    visible = today[:3]
+    # Tomorrow only backfills the slots today leaves empty, so `+N more` keeps
+    # counting today's own overflow.
+    remaining: int | None = max(0, len(today) - len(visible))
+    visible = visible + tomorrow[: 3 - len(visible)]
     if limit_hit or not complete or invalid_count:
         remaining = None
     effective_complete = not limit_hit and complete and not invalid_count
     status = "ok"
     error_reason: str | None = "invalid_event" if invalid_count else None
-    if not parsed and invalid_count:
+    if not today and not tomorrow and invalid_count:
         status = "unavailable"
     return CalendarSection(
         owner_id,
@@ -237,7 +263,7 @@ def normalize_calendar_events(
         remaining,
         complete=effective_complete,
         error_reason=error_reason,
-        cached_events=parsed,
+        cached_events=today + tomorrow,
     )
 
 

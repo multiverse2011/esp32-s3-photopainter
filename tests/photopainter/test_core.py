@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from custom_components.photopainter.config import day_window_minutes, parse_hhmm
 from custom_components.photopainter.core import (
+    calendar_time_label,
     forecast_boundaries,
     normalize_calendar_events,
     normalize_forecast,
@@ -51,6 +52,86 @@ class CoreContractTests(unittest.TestCase):
         self.assertEqual(section.status, "unavailable")
         self.assertFalse(section.complete)
         self.assertEqual(section.error_reason, "invalid_event")
+
+    def _plans(self, raw, *, now):
+        return normalize_calendar_events(
+            raw,
+            owner_id="calendar_1",
+            entity_id="calendar.star",
+            now=now,
+            timezone_name="Asia/Tokyo",
+            collected_at=now,
+        )
+
+    def test_tomorrow_fills_the_slots_today_leaves_empty(self) -> None:
+        now = datetime(2026, 9, 6, 22, 10, tzinfo=JST)
+        section = self._plans(
+            [
+                {"summary": "tonight", "start": "2026-09-06T23:00:00+09:00", "end": "2026-09-06T23:30:00+09:00"},
+                {"summary": "this morning", "start": "2026-09-06T10:00:00+09:00", "end": "2026-09-06T12:00:00+09:00"},
+                {"summary": "tomorrow noon", "start": "2026-09-07T12:00:00+09:00", "end": "2026-09-07T13:00:00+09:00"},
+                {"summary": "tomorrow all day", "start": "2026-09-07", "end": "2026-09-08"},
+            ],
+            now=now,
+        )
+        self.assertEqual([event.title for event in section.events], ["tonight", "tomorrow all day", "tomorrow noon"])
+
+    def test_a_full_today_leaves_no_room_for_tomorrow(self) -> None:
+        now = datetime(2026, 9, 6, 8, 0, tzinfo=JST)
+        section = self._plans(
+            [
+                {"summary": "today 1", "start": "2026-09-06T09:00:00+09:00", "end": "2026-09-06T10:00:00+09:00"},
+                {"summary": "today 2", "start": "2026-09-06T11:00:00+09:00", "end": "2026-09-06T12:00:00+09:00"},
+                {"summary": "today 3", "start": "2026-09-06T13:00:00+09:00", "end": "2026-09-06T14:00:00+09:00"},
+                {"summary": "today 4", "start": "2026-09-06T15:00:00+09:00", "end": "2026-09-06T16:00:00+09:00"},
+                {"summary": "tomorrow", "start": "2026-09-07T09:00:00+09:00", "end": "2026-09-07T10:00:00+09:00"},
+            ],
+            now=now,
+        )
+        self.assertEqual([event.title for event in section.events], ["today 1", "today 2", "today 3"])
+        self.assertEqual(section.remaining_count, 1)
+
+    def test_overflowing_tomorrow_is_not_counted_as_more(self) -> None:
+        now = datetime(2026, 9, 6, 22, 10, tzinfo=JST)
+        section = self._plans(
+            [
+                {"summary": f"tomorrow {hour}", "start": f"2026-09-07T{hour:02d}:00:00+09:00", "end": f"2026-09-07T{hour + 1:02d}:00:00+09:00"}
+                for hour in (9, 11, 13, 15)
+            ],
+            now=now,
+        )
+        self.assertEqual([event.title for event in section.events], ["tomorrow 9", "tomorrow 11", "tomorrow 13"])
+        self.assertEqual(section.remaining_count, 0)
+
+    def test_the_day_after_tomorrow_never_appears(self) -> None:
+        now = datetime(2026, 9, 6, 22, 10, tzinfo=JST)
+        section = self._plans(
+            [{"summary": "too far", "start": "2026-09-08T09:00:00+09:00", "end": "2026-09-08T10:00:00+09:00"}],
+            now=now,
+        )
+        self.assertEqual(section.events, [])
+        self.assertEqual(section.status, "ok")
+
+    def test_an_event_spanning_both_days_is_listed_once(self) -> None:
+        now = datetime(2026, 9, 6, 22, 10, tzinfo=JST)
+        section = self._plans(
+            [{"summary": "long trip", "start": "2026-09-05", "end": "2026-09-09"}],
+            now=now,
+        )
+        self.assertEqual([event.title for event in section.events], ["long trip"])
+
+    def test_time_label_carries_the_date_of_the_day_it_is_shown_on(self) -> None:
+        now = datetime(2026, 9, 6, 22, 10, tzinfo=JST)
+        section = self._plans(
+            [
+                {"summary": "long trip", "start": "2026-09-05", "end": "2026-09-09"},
+                {"summary": "tonight", "start": "2026-09-06T22:00:00+09:00", "end": "2026-09-06T23:30:00+09:00"},
+                {"summary": "tomorrow", "start": "2026-09-07T09:00:00+09:00", "end": "2026-09-07T10:00:00+09:00"},
+            ],
+            now=now,
+        )
+        labels = [calendar_time_label(event, section.display_date) for event in section.events]
+        self.assertEqual(labels, ["9/6 all", "9/6 Now", "9/7 09:00"])
 
     def test_unconfigured_forecast_keeps_four_slots_and_next_day_label(self) -> None:
         now = datetime(2026, 9, 6, 23, 59, tzinfo=JST)

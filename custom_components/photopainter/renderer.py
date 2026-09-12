@@ -14,7 +14,7 @@ import os
 import math
 import json
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 from zoneinfo import ZoneInfo
@@ -36,7 +36,7 @@ from .const import (
     WIDTH,
     YELLOW,
 )
-from .core import frame_sha256
+from .core import calendar_time_label, frame_sha256
 from .models import CalendarSection, DisplaySnapshot, ForecastSlot, RenderedFrame, RoomReading
 
 
@@ -275,10 +275,17 @@ def _draw_header(draw: ImageDraw.ImageDraw, snapshot: DisplaySnapshot, next_poll
     local = snapshot.generated_at.astimezone(tz)
     collected = _oldest_collected(snapshot) or snapshot.generated_at
     collected_local = collected.astimezone(tz)
-    draw.text((24, 28), local.strftime("%a").upper(), font=date_font, fill=RED if local.weekday() == 6 else BLACK)
-    draw.text((75, 28), local.strftime("%b").upper(), font=date_font, fill=BLACK)
-    draw.text((130, 22), local.strftime("%d"), font=mono_font, fill=BLACK)
-    draw.text((184, 28), local.strftime("%Y"), font=date_font, fill=BLACK)
+    date_text = local.strftime("%Y/%m/%d")
+    draw.text((24, 22), date_text, font=mono_font, fill=BLACK)
+    # The weekday sits on the date's own baseline rather than its own top edge.
+    date_box = draw.textbbox((24, 22), date_text, font=mono_font)
+    draw.text(
+        (date_box[2] + 12, date_box[3]),
+        f"({local.strftime('%a')})",
+        font=date_font,
+        fill=RED if local.weekday() == 6 else BLACK,
+        anchor="ls",
+    )
     draw.line((24, 80, 776, 80), fill=BLACK, width=2)
     next_local = next_poll_at.astimezone(tz) if next_poll_at else None
     if snapshot.status == "offline":
@@ -293,9 +300,9 @@ def _draw_header(draw: ImageDraw.ImageDraw, snapshot: DisplaySnapshot, next_poll
     else:
         first = f"Updated {collected_local.strftime('%b %d %H:%M')}"
         second = f"Next {next_local.strftime('%H:%M') if next_local else '—'}"
-    draw.text((344, 24), _fit_text(draw, first, small_font, 432), font=small_font, fill=BLACK)
+    draw.text((776, 24), _fit_text(draw, first, small_font, 432), font=small_font, fill=BLACK, anchor="ra")
     if second:
-        draw.text((344, 45), _fit_text(draw, second, small_font, 432), font=small_font, fill=BLACK)
+        draw.text((776, 45), _fit_text(draw, second, small_font, 432), font=small_font, fill=BLACK, anchor="ra")
 
 
 def _section_label(draw: ImageDraw.ImageDraw, text: str, x: int, y: int, right: str | None = None) -> None:
@@ -306,10 +313,15 @@ def _section_label(draw: ImageDraw.ImageDraw, text: str, x: int, y: int, right: 
         draw.text((x + 382 - width, y), right, font=font, fill=BLACK)
 
 
-def _calendar_line(draw: ImageDraw.ImageDraw, event: Any, x: int, y: int, width: int) -> None:
-    time_font = _font(18, mono=True)
-    label = "All day" if event.all_day else "Now" if event.ongoing else event.start.strftime("%H:%M")
-    draw.text((x, y), label, font=time_font, fill=BLACK)
+def _calendar_line(draw: ImageDraw.ImageDraw, event: Any, display_date: date, x: int, y: int, width: int) -> None:
+    label = calendar_time_label(event, display_date)
+    # Two-digit months push the dated label past the column, so it steps down
+    # a size or two rather than running into the title.
+    for size in (14, 13, 12):
+        time_font = _font(size, mono=True)
+        if draw.textbbox((0, 0), label, font=time_font)[2] <= 76:
+            break
+    draw.text((x, y + 4), label, font=time_font, fill=BLACK)
     title_x = x + 80
     title = _fit_mixed_text(draw, event.title, 24, width - 80)
     _draw_mixed_text(draw, (title_x, y - 3), title, 24, BLACK)
@@ -332,15 +344,15 @@ def _draw_calendar(draw: ImageDraw.ImageDraw, section: CalendarSection, x: int, 
     if section.status == "unavailable":
         draw.text((x, y + 39), "Unavailable", font=_font(16), fill=BLACK)
         return
+    if section.status == "stale":
+        draw.text((x + 220, y + 3), "Stale", font=_font(16), fill=BLACK)
     if not section.events:
-        draw.text((x, y + 39), "No events today", font=_font(16), fill=BLACK)
+        draw.text((x, y + 39), "No events today or tomorrow", font=_font(16), fill=BLACK)
         return
     row_y = y + 38
     for event in section.events[:3]:
-        _calendar_line(draw, event, x, row_y, 316)
+        _calendar_line(draw, event, section.display_date, x, row_y, 316)
         row_y += 39
-    if section.status == "stale":
-        draw.text((x + 220, y + 3), "Stale", font=_font(16), fill=BLACK)
 
 
 def _format_temperature(value: float | None) -> str:
@@ -425,7 +437,7 @@ def render_snapshot(snapshot: DisplaySnapshot, *, next_poll_at: datetime | None 
     draw = ImageDraw.Draw(image)
     _draw_header(draw, snapshot, next_poll_at)
 
-    _section_label(draw, "TODAY'S PLANS", 24, 96)
+    _section_label(draw, "PLANS", 24, 96)
     draw.line((370, 96, 370, 456), fill=BLACK, width=2)
     calendars = snapshot.calendars
     for index, (owner_id, _name, _icon) in enumerate(CALENDAR_OWNERS):
@@ -433,7 +445,7 @@ def render_snapshot(snapshot: DisplaySnapshot, *, next_poll_at: datetime | None 
         if section is not None:
             _draw_calendar(draw, section, 24, 128 if index == 0 else 304)
 
-    _section_label(draw, "ROOMS", 394, 96, "°C / % RH")
+    _section_label(draw, "CLIMATE", 394, 96, "°C / % RH")
     by_room = {room.room_id: room for room in snapshot.rooms}
     positions = {
         "living": (394, 128),

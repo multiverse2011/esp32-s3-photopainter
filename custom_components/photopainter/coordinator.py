@@ -9,7 +9,8 @@ from datetime import date, datetime, time, timedelta, timezone
 from functools import partial
 from typing import Any
 
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.core import CoreState, Event, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_point_in_time, async_track_state_change_event
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -29,6 +30,9 @@ from .models import CalendarSection, DisplaySnapshot, ForecastSection, RoomReadi
 from .renderer import render_snapshot
 
 _LOGGER = logging.getLogger(__name__)
+
+# States that mean "this entity has nothing to report yet".
+_MISSING_STATES = {"unavailable", "unknown"}
 
 
 def next_poll_at(
@@ -112,8 +116,10 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
         self._previous_forecast: ForecastSection | None = None
         self._unsub_state = None
         self._unsub_schedule = None
+        self._unsub_started = None
         self._dirty = True
         self._scheduled_target: datetime | None = None
+        self._awaiting_entities: set[str] = set()
         super().__init__(
             hass,
             _LOGGER,
@@ -133,9 +139,23 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
                 entity_ids,
                 self._async_state_changed,
             )
+        if self.hass.state is not CoreState.running:
+            # Entities are still coming up, so the frame rendered now is full of
+            # placeholders. Render again once HA is up.
+            self._unsub_started = self.hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STARTED, self._async_hass_started
+            )
         await self.async_config_entry_first_refresh()
 
+    async def _async_hass_started(self, _event: Event) -> None:
+        self._unsub_started = None
+        self._dirty = True
+        await self.async_request_refresh()
+
     async def async_stop(self) -> None:
+        if self._unsub_started:
+            self._unsub_started()
+            self._unsub_started = None
         if self._unsub_state:
             self._unsub_state()
             self._unsub_state = None
@@ -178,10 +198,23 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
         values.extend(self.config.get(f"{room}_humidity") for room in ROOMS)
         return [value for value in values if isinstance(value, str) and value]
 
-    async def _async_state_changed(self, _event: Event[Any]) -> None:
+    async def _async_state_changed(self, event: Event[Any]) -> None:
         # State events only mark the image dirty.  The scheduled wake performs
         # the collection/render so a burst of HA events cannot redraw a panel.
         self._dirty = True
+        # The exception is an entity the current frame is drawing a placeholder
+        # for: after a restart the battery sensors report one by one, and the
+        # panel should not wait for the next wake to show a house it can
+        # already read. Each entity triggers this at most once per render, and
+        # the coordinator's debouncer collapses a burst of them.
+        entity_id = event.data.get("entity_id")
+        if entity_id not in self._awaiting_entities:
+            return
+        new_state = event.data.get("new_state")
+        if new_state is None or new_state.state in _MISSING_STATES:
+            return
+        self._awaiting_entities.discard(entity_id)
+        await self.async_request_refresh()
 
     @callback
     def _scheduled_refresh(self, _when: datetime) -> None:
@@ -195,7 +228,8 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
         tz = parse_timezone(self.config["timezone"])
         local = now.astimezone(tz)
         start = datetime.combine(local.date(), time.min, tzinfo=tz)
-        end = start + timedelta(days=1)
+        # Two days, so tomorrow can backfill the slots today leaves empty.
+        end = start + timedelta(days=2)
         response = await asyncio.wait_for(
             self.hass.services.async_call(
                 "calendar",
@@ -391,7 +425,12 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
         frame = await self.hass.async_add_executor_job(
             partial(render_snapshot, snapshot, next_poll_at=next_wake)
         )
-        await self.runtime.async_set_pending_frame(frame)
+        # A frame restored from storage describes a working house; one rendered
+        # while HA is still starting does not. Keep the stored frame until the
+        # entities are actually up, so a restart minutes before the device wakes
+        # cannot hand it a screen full of placeholders.
+        if self.hass.state is CoreState.running or self.runtime.pending_frame is None:
+            await self.runtime.async_set_pending_frame(frame)
         self._dirty = False
         if self._unsub_schedule:
             self._unsub_schedule()
@@ -404,4 +443,9 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
             schedule_at = max(now + timedelta(seconds=1), prewake)
         self._scheduled_target = schedule_at
         self._unsub_schedule = async_track_point_in_time(self.hass, self._scheduled_refresh, schedule_at)
+        self._awaiting_entities = {
+            entity_id
+            for entity_id in self._bound_entity_ids()
+            if (state := self.hass.states.get(entity_id)) is None or state.state in _MISSING_STATES
+        }
         return snapshot
