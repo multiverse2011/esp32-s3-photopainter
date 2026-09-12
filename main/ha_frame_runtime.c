@@ -615,6 +615,7 @@ static void run_once(void)
     bool frame_ready = false;
     bool cache_commit_failed = false;
     bool cold_boot_recovery = consume_cold_boot_recovery();
+    ESP_LOGI(TAG, "wake cycle: reset_reason=%d cold_boot_recovery=%d", (int)esp_reset_reason(), cold_boot_recovery);
     bool pending_valid = load_pending_report(&pending_report) == ESP_OK;
     bool state_valid = load_display_state(&display_state) == ESP_OK;
     bool force_redisplay = load_force_redisplay();
@@ -790,11 +791,13 @@ static void run_once(void)
             (int64_t)now, state_valid ? display_state.displayed_at : 0,
             MIN_PANEL_REFRESH_SECONDS, cold_boot_recovery);
         if (!should_refresh) {
+            ESP_LOGI(TAG, "panel refresh skipped: frame and overlay unchanged");
             display_result = HA_FRAME_RESULT_SKIPPED;
             snprintf(displayed_id, sizeof(displayed_id), "%s", candidate_id);
             local_overlay = (ha_frame_overlay_t)display_state.overlay;
             overlay_source_time = (time_t)display_state.overlay_source_time;
         } else if (refresh_blocked) {
+            ESP_LOGI(TAG, "panel refresh deferred: minimum interval");
             error_code = "min_refresh";
             local_overlay = (ha_frame_overlay_t)display_state.overlay;
             overlay_source_time = (time_t)display_state.overlay_source_time;
@@ -927,6 +930,7 @@ cleanup:
     if (cooldown_seconds > 12u * 3600u) {
         cooldown_seconds = 12u * 3600u;
     }
+    ESP_LOGI(TAG, "next wake in %lu seconds", (unsigned long)cooldown_seconds);
 #if CONFIG_DISABLE_DEEP_SLEEP
     vTaskDelay(pdMS_TO_TICKS(cooldown_seconds * 1000u));
 #else

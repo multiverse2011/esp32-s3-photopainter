@@ -33,6 +33,11 @@ static int s_retry_num = 0;
 static bool s_is_connected = false;
 static time_t s_last_sync_time = 0;
 static bool s_initialized = false;
+static bool s_connect_requested = false;
+static bool s_driver_initialized = false;
+static bool s_sntp_started = false;
+static esp_event_handler_instance_t s_wifi_handler = NULL;
+static esp_event_handler_instance_t s_ip_handler = NULL;
 
 // Forward declarations
 static void wifi_event_handler(void *arg, esp_event_base_t event_base,
@@ -48,9 +53,14 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
                                int32_t event_id, void *event_data)
 {
     if (event_id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
+        if (s_connect_requested) {
+            esp_wifi_connect();
+        }
     } else if (event_id == WIFI_EVENT_STA_DISCONNECTED) {
         s_is_connected = false;
+        if (!s_connect_requested) {
+            return;
+        }
         if (s_retry_num < WIFI_MAXIMUM_RETRY) {
             esp_wifi_connect();
             s_retry_num++;
@@ -114,27 +124,45 @@ esp_err_t wifi_manager_init(void)
     }
 
     // Initialize TCP/IP stack
-    ESP_ERROR_CHECK(esp_netif_init());
+    ret = esp_netif_init();
+    if (ret != ESP_OK) {
+        goto fail;
+    }
 
     // Create default event loop
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    // The default loop belongs to the application and survives WiFi teardown.
+    ret = esp_event_loop_create_default();
+    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+        goto fail;
+    }
 
     // Create default WiFi station
     s_sta_netif = esp_netif_create_default_wifi_sta();
     if (s_sta_netif == NULL) {
         ESP_LOGE(TAG, "Failed to create WiFi STA netif");
-        return ESP_FAIL;
+        ret = ESP_FAIL;
+        goto fail;
     }
 
     // Initialize WiFi with default config
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    ret = esp_wifi_init(&cfg);
+    if (ret != ESP_OK) {
+        goto fail;
+    }
+    s_driver_initialized = true;
 
     // Register event handlers
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler, NULL, NULL));
+    ret = esp_event_handler_instance_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &s_wifi_handler);
+    if (ret != ESP_OK) {
+        goto fail;
+    }
+    ret = esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler, NULL, &s_ip_handler);
+    if (ret != ESP_OK) {
+        goto fail;
+    }
 
     // Configure WiFi
     wifi_config_t wifi_config = {
@@ -145,13 +173,24 @@ esp_err_t wifi_manager_init(void)
         },
     };
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    ret = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (ret != ESP_OK) {
+        goto fail;
+    }
+    ret = esp_wifi_set_config(WIFI_IF_STA, &wifi_config);
+    if (ret != ESP_OK) {
+        goto fail;
+    }
 
     s_initialized = true;
     ESP_LOGI(TAG, "WiFi manager initialized");
 
     return ESP_OK;
+
+fail:
+    ESP_LOGE(TAG, "WiFi initialization failed: %s", esp_err_to_name(ret));
+    wifi_manager_deinit();
+    return ret;
 }
 
 esp_err_t wifi_manager_connect(uint32_t timeout_ms)
@@ -173,9 +212,14 @@ esp_err_t wifi_manager_connect(uint32_t timeout_ms)
     // Clear event bits
     xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
     s_retry_num = 0;
+    s_connect_requested = true;
 
     // Start WiFi
-    ESP_ERROR_CHECK(esp_wifi_start());
+    esp_err_t ret = esp_wifi_start();
+    if (ret != ESP_OK) {
+        s_connect_requested = false;
+        return ret;
+    }
 
     // Wait for connection
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
@@ -197,7 +241,8 @@ esp_err_t wifi_manager_connect(uint32_t timeout_ms)
 
 esp_err_t wifi_manager_disconnect(void)
 {
-    if (!s_initialized) {
+    s_connect_requested = false;
+    if (!s_driver_initialized) {
         return ESP_OK;
     }
 
@@ -248,10 +293,11 @@ esp_err_t wifi_manager_sync_time(uint32_t timeout_ms)
     esp_sntp_setservername(0, "pool.ntp.org");
     esp_sntp_setservername(1, "time.nist.gov");
     esp_sntp_set_time_sync_notification_cb(sntp_sync_callback);
-    esp_sntp_init();
 
-    // Clear sync bit
+    // Clear before starting so a fast response is not discarded.
     xEventGroupClearBits(s_wifi_event_group, SNTP_SYNC_BIT);
+    esp_sntp_init();
+    s_sntp_started = true;
 
     // Wait for sync
     EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
@@ -282,24 +328,34 @@ time_t wifi_manager_get_last_sync_time(void)
 
 void wifi_manager_deinit(void)
 {
-    if (!s_initialized) {
-        return;
-    }
-
     ESP_LOGI(TAG, "Deinitializing WiFi manager");
 
     // Stop SNTP
-    if (esp_sntp_enabled()) {
+    if (s_sntp_started) {
         esp_sntp_stop();
+        s_sntp_started = false;
     }
 
     // Stop WiFi
     wifi_manager_disconnect();
-    esp_wifi_deinit();
+
+    // Unregister callbacks before releasing anything they can access.
+    if (s_wifi_handler) {
+        esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, s_wifi_handler);
+        s_wifi_handler = NULL;
+    }
+    if (s_ip_handler) {
+        esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, s_ip_handler);
+        s_ip_handler = NULL;
+    }
+    if (s_driver_initialized) {
+        esp_wifi_deinit();
+        s_driver_initialized = false;
+    }
 
     // Destroy netif
     if (s_sta_netif) {
-        esp_netif_destroy(s_sta_netif);
+        esp_netif_destroy_default_wifi(s_sta_netif);
         s_sta_netif = NULL;
     }
 
