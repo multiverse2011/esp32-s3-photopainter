@@ -128,6 +128,116 @@ async def main() -> None:
             report["schema_version"] = 99
             response = await client.post(f"{prefix}/reports", json=report, headers=headers)
             assert response.status == 422
+
+        def state_snapshot() -> tuple[object, ...]:
+            return (
+                runtime.pending_frame.frame_id if runtime.pending_frame else None,
+                runtime.displayed_frame.frame_id if runtime.displayed_frame else None,
+                tuple(sorted(runtime._frames)),
+                tuple(runtime._frame_order),
+                tuple(runtime._report_ids),
+                runtime.last_seen,
+                runtime.last_displayed,
+                runtime.battery_percent,
+                runtime.wifi_signal_dbm,
+                runtime.next_wake_at,
+                runtime.last_error,
+                runtime.local_overlay,
+                runtime.overlay_source_time,
+                runtime.firmware_version,
+                runtime.redisplay_required,
+            )
+
+        # Exercise malformed new reports through the runtime so the HTTP
+        # report bucket remains below its ten-per-minute limit.  Every field
+        # that can be null is still required on the wire; the overlay source
+        # time is the one optional exception.
+        valid_report = {
+            "schema_version": 1,
+            "report_id": "validation-good",
+            "boot_id": "smoke-boot",
+            "firmware_version": "smoke",
+            "received_frame_id": None,
+            "displayed_frame_id": None,
+            "display_result": "failed",
+            "display_completed_at": None,
+            "local_overlay": "none",
+            "battery_percent": None,
+            "wifi_rssi_dbm": None,
+            "next_wake_at": None,
+            "error_code": None,
+            "unknown_field": {"ignored": True},
+        }
+        result = await runtime.async_handle_report(valid_report)
+        assert result.accepted and result.status == 200
+        accepted_state = state_snapshot()
+
+        # A known ID is idempotent before validating the body, including when
+        # a device retries with a malformed copy of an already accepted
+        # report.
+        duplicate_bad = dict(valid_report, schema_version=True, battery_percent="bad")
+        result = await runtime.async_handle_report(duplicate_bad)
+        assert result.accepted and result.status == 200
+        assert state_snapshot() == accepted_state
+
+        nullable_fields = (
+            "received_frame_id",
+            "displayed_frame_id",
+            "display_completed_at",
+            "battery_percent",
+            "wifi_rssi_dbm",
+            "next_wake_at",
+            "error_code",
+        )
+        invalid_cases: list[tuple[str, dict[str, object]]] = [
+            ("bool-schema", {"schema_version": True}),
+            ("float-schema", {"schema_version": 1.0}),
+            ("invalid-battery", {"battery_percent": "not-a-number"}),
+            ("bool-battery", {"battery_percent": True}),
+            ("low-battery", {"battery_percent": -1}),
+            ("high-battery", {"battery_percent": 101}),
+            ("invalid-rssi", {"wifi_rssi_dbm": "not-a-number"}),
+            ("bool-rssi", {"wifi_rssi_dbm": True}),
+            ("float-rssi", {"wifi_rssi_dbm": -60.0}),
+            ("low-rssi", {"wifi_rssi_dbm": -151}),
+            ("high-rssi", {"wifi_rssi_dbm": 1}),
+            ("invalid-error", {"error_code": 7}),
+            ("invalid-completion", {"display_completed_at": "not-a-time"}),
+            ("invalid-next-wake", {"next_wake_at": "not-a-time"}),
+            ("invalid-overlay-time", {"overlay_source_time": 7}),
+            # UTC normalization can overflow even after fromisoformat parses
+            # these strings; they must still be rejected as invalid times.
+            ("completion-overflow", {"display_completed_at": "0001-01-01T00:00:00+01:00"}),
+            ("next-wake-overflow", {"next_wake_at": "9999-12-31T23:59:59-01:00"}),
+        ]
+        for field in nullable_fields:
+            invalid_cases.append((f"missing-{field}", {"missing": field}))
+
+        for case, change in invalid_cases:
+            candidate = dict(valid_report, report_id=f"validation-{case}")
+            if "missing" in change:
+                candidate.pop(change["missing"], None)
+            else:
+                candidate.update(change)
+            before = state_snapshot()
+            result = await runtime.async_handle_report(candidate)
+            assert not result.accepted and result.status == 422, (case, result)
+            assert candidate["report_id"] not in runtime._report_ids
+            assert state_snapshot() == before, case
+
+        # A rejected ID remains available for the corrected resend, and an
+        # optional overlay_source_time may be sent explicitly as JSON null.
+        retry_id = "validation-retry"
+        invalid_retry = dict(valid_report, report_id=retry_id, battery_percent="bad")
+        before = state_snapshot()
+        result = await runtime.async_handle_report(invalid_retry)
+        assert not result.accepted and result.status == 422
+        assert retry_id not in runtime._report_ids
+        assert state_snapshot() == before
+        corrected_retry = dict(invalid_retry, battery_percent=None, overlay_source_time=None)
+        result = await runtime.async_handle_report(corrected_retry)
+        assert result.accepted and result.status == 200
+        assert retry_id in runtime._report_ids
         print("PhotoPainter HA smoke: PASS")
     finally:
         await hass.async_stop(force=True)
