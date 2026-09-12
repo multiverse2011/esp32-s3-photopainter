@@ -19,7 +19,8 @@ extern "C" {
 /**
  * @brief Initialize WiFi manager
  *
- * Must be called once at startup. Initializes NVS, WiFi driver, and event handlers.
+ * Initializes NVS, WiFi driver, and event handlers. Safe to call again after
+ * wifi_manager_deinit(); the application default event loop is retained.
  *
  * @return ESP_OK on success
  * @return ESP_ERR_WIFI_* on WiFi initialization failure
