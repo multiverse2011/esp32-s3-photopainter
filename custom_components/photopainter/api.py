@@ -51,10 +51,10 @@ async def _authorized(request: web.Request, device_id: str, kind: str) -> PhotoP
     return runtime
 
 
-def _retry_after(runtime: PhotoPainterRuntime) -> int:
-    if runtime.server_next_wake_at is None:
+def _retry_after_at(next_wake_at: datetime | None) -> int:
+    if next_wake_at is None:
         return 1800
-    seconds = int((runtime.server_next_wake_at - datetime.now(timezone.utc)).total_seconds())
+    seconds = int((next_wake_at - datetime.now(timezone.utc)).total_seconds())
     return max(MIN_REFRESH_SECONDS, min(7200, seconds))
 
 
@@ -78,12 +78,12 @@ class ManifestView(_PhotoPainterView):
         runtime = authorized
         if request.content_type not in {"application/json", "application/octet-stream"}:
             return web.json_response({"error": "unsupported_content_type"}, status=415)
-        frame = runtime.current_manifest_frame()
+        frame, next_wake_at, redisplay_required = await runtime.async_manifest_snapshot()
         if frame is None:
             return web.json_response(
                 {"error": "frame_not_ready"},
                 status=503,
-                headers={"Retry-After": str(_retry_after(runtime))},
+                headers={"Retry-After": str(_retry_after_at(next_wake_at))},
             )
         frame_path = f"/api/photopainter/v1/devices/{device_id}/frames/{frame.frame_id}"
         payload = {
@@ -92,11 +92,11 @@ class ManifestView(_PhotoPainterView):
             "server_time": datetime.now(timezone.utc).isoformat(),
             "frame": frame.manifest_fragment(frame_path),
             "schedule": {
-                "next_poll_at": runtime.server_next_wake_at.isoformat() if runtime.server_next_wake_at else None,
-                "retry_after_seconds": _retry_after(runtime),
+                "next_poll_at": next_wake_at.isoformat() if next_wake_at else None,
+                "retry_after_seconds": _retry_after_at(next_wake_at),
                 "min_refresh_seconds": MIN_REFRESH_SECONDS,
             },
-            "redisplay_required": runtime.redisplay_required,
+            "redisplay_required": redisplay_required,
         }
         encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         if len(encoded) > MANIFEST_LIMIT:

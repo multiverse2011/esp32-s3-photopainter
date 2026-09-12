@@ -64,6 +64,19 @@ static esp_err_t drain_transaction(void)
     return ret;
 }
 
+static esp_err_t drain_transaction_for_cleanup(void)
+{
+    if (!s_transaction_inflight) return ESP_OK;
+    spi_transaction_t *completed = NULL;
+    /* The normal operation deadline may already have expired. Give an
+       already-queued transfer its own bounded chance to finish before
+       preserving the bus allocation for safety. */
+    esp_err_t ret = spi_device_get_trans_result(s_spi, &completed,
+                                                pdMS_TO_TICKS(EPD_SPI_TIMEOUT_MS));
+    if (ret == ESP_OK) s_transaction_inflight = false;
+    return ret;
+}
+
 static esp_err_t epaper_gpio_init(void)
 {
     gpio_config_t gpio_conf = {0};
@@ -258,6 +271,15 @@ static esp_err_t epaper_turn_on_display(void)
 
 esp_err_t epaper_port_init(void)
 {
+    if (s_poisoned) {
+        esp_err_t recovery = drain_transaction_for_cleanup();
+        if (recovery != ESP_OK) {
+            ESP_LOGE(TAG, "cannot recover queued SPI transaction: %s",
+                     esp_err_to_name(recovery));
+            return recovery;
+        }
+        s_poisoned = false;
+    }
     esp_err_t ret = epaper_spi_init();
     if (ret != ESP_OK) {
         return ret;
@@ -329,7 +351,7 @@ void epaper_port_deinit(void)
 {
     if (s_spi_ready && s_spi != NULL) {
         if (s_transaction_inflight) {
-            if (drain_transaction() != ESP_OK) {
+            if (drain_transaction_for_cleanup() != ESP_OK) {
                 ESP_LOGE(TAG, "SPI transaction still owned by driver; preserving port allocation");
                 s_poisoned = true;
                 return;

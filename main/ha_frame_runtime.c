@@ -613,7 +613,6 @@ static void run_once(void)
     bool cache_enabled = false;
     bool have_manifest = false;
     bool frame_ready = false;
-    bool cache_commit_failed = false;
     bool cold_boot_recovery = consume_cold_boot_recovery();
     ESP_LOGI(TAG, "wake cycle: reset_reason=%d cold_boot_recovery=%d", (int)esp_reset_reason(), cold_boot_recovery);
     bool pending_valid = load_pending_report(&pending_report) == ESP_OK;
@@ -708,9 +707,16 @@ static void run_once(void)
     }
 
     if (network_ready && !deadline_expired(deadline_us)) {
-        if (ha_frame_client_get_manifest(&client, &manifest) == ESP_OK) {
+        esp_err_t manifest_status = ha_frame_client_get_manifest(&client, &manifest);
+        if (manifest_status == ESP_OK) {
             have_manifest = true;
+            ESP_LOGI(TAG, "manifest: frame=%s generated_at=%lld next_poll_at=%lld redisplay=%d",
+                     manifest.frame_id, (long long)manifest.generated_at,
+                     (long long)(manifest.has_next_poll_at ? manifest.next_poll_at : 0),
+                     manifest.redisplay_required);
         } else {
+            ESP_LOGW(TAG, "manifest request failed: status=%d error=%s",
+                     client.last_http_status, esp_err_to_name(manifest_status));
             error_code = "manifest";
             apply_http_status_policy(&client, &cooldown_seconds, &explicit_cooldown,
                                      &block_requests);
@@ -725,6 +731,31 @@ static void run_once(void)
             frame_ready = true;
         } else {
             esp_err_t frame_status = ha_frame_client_get_frame(&client, &manifest, frame, FRAME_STORE_FRAME_BYTES);
+            bool manifest_refresh_failed = false;
+            if (frame_status != ESP_OK &&
+                (client.last_http_status == 404 || client.last_http_status == 410) &&
+                !deadline_expired(deadline_us)) {
+                ESP_LOGW(TAG, "frame %s unavailable (HTTP %d); refreshing manifest",
+                         manifest.frame_id, client.last_http_status);
+                ha_frame_manifest_t refreshed_manifest;
+                memset(&refreshed_manifest, 0, sizeof(refreshed_manifest));
+                esp_err_t refreshed_status = ha_frame_client_get_manifest(&client, &refreshed_manifest);
+                if (refreshed_status == ESP_OK) {
+                    manifest = refreshed_manifest;
+                    ESP_LOGI(TAG, "manifest refreshed: frame=%s generated_at=%lld next_poll_at=%lld redisplay=%d",
+                             manifest.frame_id, (long long)manifest.generated_at,
+                             (long long)(manifest.has_next_poll_at ? manifest.next_poll_at : 0),
+                             manifest.redisplay_required);
+                    frame_status = ha_frame_client_get_frame(&client, &manifest, frame, FRAME_STORE_FRAME_BYTES);
+                } else {
+                    ESP_LOGW(TAG, "manifest refresh failed: status=%d error=%s",
+                             client.last_http_status, esp_err_to_name(refreshed_status));
+                    manifest_refresh_failed = true;
+                    error_code = "manifest";
+                    apply_http_status_policy(&client, &cooldown_seconds, &explicit_cooldown,
+                                             &block_requests);
+                }
+            }
             if (frame_status == ESP_OK) {
                 memset(&current_meta, 0, sizeof(current_meta));
                 if (!hex_id_to_digest(manifest.frame_id, current_meta.frame_sha256)) {
@@ -738,20 +769,25 @@ static void run_once(void)
                     current_meta.byte_length = manifest.byte_length;
                     current_meta.reserved_status_overlay = 0;
                     if (cache_configured && !store_ready) {
-                        error_code = "cache_unavailable";
+                        ESP_LOGW(TAG, "frame cache unavailable; displaying validated network frame");
+                        frame_ready = true;
                     } else if (cache_enabled) {
                         esp_err_t save_status = frame_store_save(frame, FRAME_STORE_FRAME_BYTES, &current_meta);
                         if (save_status != ESP_OK) {
+                            ESP_LOGW(TAG, "frame cache commit failed: %s; displaying network frame",
+                                     esp_err_to_name(save_status));
                             error_code = "cache_commit";
-                            cache_commit_failed = true;
+                            frame_ready = true;
                         } else {
+                            ESP_LOGI(TAG, "frame source=http frame=%s cache=committed", manifest.frame_id);
                             frame_ready = true;
                         }
                     } else {
+                        ESP_LOGI(TAG, "frame source=http frame=%s cache=disabled", manifest.frame_id);
                         frame_ready = true;
                     }
                 }
-            } else {
+            } else if (!manifest_refresh_failed) {
                 error_code = "frame";
                 apply_http_status_policy(&client, &cooldown_seconds, &explicit_cooldown,
                                          &block_requests);
@@ -759,7 +795,7 @@ static void run_once(void)
         }
     }
 
-    if (!frame_ready && !cache_commit_failed && store_ready && frame_store_has_frame() && frame_store_get_meta(&stored_meta) == ESP_OK &&
+    if (!frame_ready && store_ready && frame_store_has_frame() && frame_store_get_meta(&stored_meta) == ESP_OK &&
         frame_store_load(frame, FRAME_STORE_FRAME_BYTES, &stored_meta) == ESP_OK) {
         current_meta = stored_meta;
         manifest_from_meta(&stored_meta, &manifest);
@@ -907,7 +943,11 @@ static void run_once(void)
 
 cleanup:
     if (display_ready) {
-        (void)epd_driver_sleep();
+        esp_err_t sleep_status = epd_driver_sleep();
+        if (sleep_status != ESP_OK) {
+            ESP_LOGW(TAG, "display sleep failed: %s; continuing cleanup",
+                     esp_err_to_name(sleep_status));
+        }
         epd_driver_deinit();
     }
     if (store_ready) {
