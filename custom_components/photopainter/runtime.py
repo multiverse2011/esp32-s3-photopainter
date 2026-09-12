@@ -297,30 +297,57 @@ class PhotoPainterRuntime:
     async def async_set_pending_frame(self, frame: RenderedFrame) -> None:
         validate_packed4(frame.data, expected_sha256=frame.frame_id, width=frame.width, height=frame.height, palette_id=frame.palette_id)
         async with self._lock:
-            self.pending_frame = frame
-            self._frames[frame.frame_id] = frame
-            if frame.frame_id in self._frame_order:
-                self._frame_order.remove(frame.frame_id)
-            self._frame_order.append(frame.frame_id)
-            keep = {self.pending_frame.frame_id}
-            if self.displayed_frame:
-                keep.add(self.displayed_frame.frame_id)
-            for old_id in self._frame_order[:-64]:
-                if old_id not in keep:
-                    self._frames.pop(old_id, None)
-            self._frame_order = [item for item in self._frame_order if item in self._frames]
-            # A regular render is pending until the endpoint receives a
-            # success report.  A forced regenerate also keeps this true when
-            # the image bytes happen to be unchanged.
-            self.redisplay_required = self.displayed_frame is None or self.displayed_frame.frame_id != frame.frame_id or self.redisplay_required
+            self._set_pending_frame_locked(frame)
             await self._async_save()
         self.async_signal_update()
+
+    async def async_publish_pending_frame(self, frame: RenderedFrame, next_wake_at: datetime) -> None:
+        """Publish a frame and its schedule as one manifest-visible state."""
+
+        validate_packed4(frame.data, expected_sha256=frame.frame_id, width=frame.width, height=frame.height, palette_id=frame.palette_id)
+        async with self._lock:
+            self._set_pending_frame_locked(frame)
+            self.server_next_wake_at = next_wake_at
+            await self._async_save()
+        self.async_signal_update()
+
+    def _set_pending_frame_locked(self, frame: RenderedFrame) -> None:
+        self.pending_frame = frame
+        self._frames[frame.frame_id] = frame
+        if frame.frame_id in self._frame_order:
+            self._frame_order.remove(frame.frame_id)
+        self._frame_order.append(frame.frame_id)
+        keep = {self.pending_frame.frame_id}
+        if self.displayed_frame:
+            keep.add(self.displayed_frame.frame_id)
+        for old_id in self._frame_order[:-64]:
+            if old_id not in keep:
+                self._frames.pop(old_id, None)
+        self._frame_order = [item for item in self._frame_order if item in self._frames]
+        # A regular render is pending until the endpoint receives a
+        # success report.  A forced regenerate also keeps this true when
+        # the image bytes happen to be unchanged.
+        self.redisplay_required = (
+            self.displayed_frame is None
+            or self.displayed_frame.frame_id != frame.frame_id
+            or self.redisplay_required
+        )
 
     def get_frame(self, frame_id: str) -> RenderedFrame | None:
         return self._frames.get(frame_id)
 
     def current_manifest_frame(self) -> RenderedFrame | None:
         return self.pending_frame or self.displayed_frame
+
+    async def async_manifest_snapshot(self) -> tuple[RenderedFrame | None, datetime | None, bool]:
+        """Read the frame, schedule, and redisplay flag from one state point."""
+
+        async with self._lock:
+            return (
+                self.pending_frame or self.displayed_frame,
+                self.server_next_wake_at,
+                self.redisplay_required,
+            )
 
     def is_authorized(self, key: str | None) -> bool:
         if not isinstance(key, str) or not key:

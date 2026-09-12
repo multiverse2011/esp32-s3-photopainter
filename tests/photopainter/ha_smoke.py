@@ -70,6 +70,7 @@ async def main() -> None:
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
         runtime = hass.data["photopainter"]["runtimes"]["smoke-display"]
+        coordinator = hass.data["photopainter"]["coordinators"][entry.entry_id]
         assert runtime.pending_frame is not None
         assert len(hass.states.async_all()) >= 11
 
@@ -81,6 +82,12 @@ async def main() -> None:
             response = await client.get(f"{prefix}/manifest", headers=headers)
             assert response.status == 200
             manifest = await response.json()
+            snapshot_frame, snapshot_next_wake, snapshot_redisplay = await runtime.async_manifest_snapshot()
+            assert snapshot_frame is not None
+            assert snapshot_next_wake is not None
+            assert manifest["frame"]["id"] == snapshot_frame.frame_id
+            assert manifest["schedule"]["next_poll_at"] == snapshot_next_wake.isoformat()
+            assert manifest["redisplay_required"] == snapshot_redisplay
             response = await client.get(manifest["frame"]["path"], headers=headers)
             frame = await response.read()
             assert response.status == 200 and len(frame) == 192000
@@ -128,6 +135,27 @@ async def main() -> None:
             report["schema_version"] = 99
             response = await client.post(f"{prefix}/reports", json=report, headers=headers)
             assert response.status == 422
+
+        # A one-shot timer must be replaced even when collection/rendering
+        # raises. Restore the implementation after exercising the failure so
+        # the smoke test can shut down cleanly.
+        original_update = coordinator._async_update_data_impl
+
+        async def failing_update() -> object:
+            raise RuntimeError("smoke failure")
+
+        coordinator._async_update_data_impl = failing_update
+        try:
+            try:
+                await coordinator._async_update_data()
+            except RuntimeError:
+                pass
+            else:
+                raise AssertionError("coordinator failure was swallowed")
+            assert coordinator._scheduled_target is not None
+            assert coordinator._scheduled_target > datetime.now(timezone.utc)
+        finally:
+            coordinator._async_update_data_impl = original_update
 
         def state_snapshot() -> tuple[object, ...]:
             return (

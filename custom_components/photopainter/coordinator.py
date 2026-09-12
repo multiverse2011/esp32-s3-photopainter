@@ -12,7 +12,7 @@ from typing import Any
 from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import CoreState, Event, HomeAssistant, callback
 from homeassistant.helpers.event import async_track_point_in_time, async_track_state_change_event
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .config import day_window_minutes
 from .const import (
@@ -33,6 +33,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # States that mean "this entity has nothing to report yet".
 _MISSING_STATES = {"unavailable", "unknown"}
+_UPDATE_RETRY_SECONDS = 60
 
 
 def next_poll_at(
@@ -119,6 +120,8 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
         self._unsub_started = None
         self._dirty = True
         self._scheduled_target: datetime | None = None
+        self._scheduled_next_wake: datetime | None = None
+        self._stopped = False
         self._awaiting_entities: set[str] = set()
         super().__init__(
             hass,
@@ -132,6 +135,7 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
         runtime.coordinator = self
 
     async def async_start(self) -> None:
+        self._stopped = False
         entity_ids = self._bound_entity_ids()
         if entity_ids:
             self._unsub_state = async_track_state_change_event(
@@ -153,15 +157,14 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
         await self.async_request_refresh()
 
     async def async_stop(self) -> None:
+        self._stopped = True
         if self._unsub_started:
             self._unsub_started()
             self._unsub_started = None
         if self._unsub_state:
             self._unsub_state()
             self._unsub_state = None
-        if self._unsub_schedule:
-            self._unsub_schedule()
-            self._unsub_schedule = None
+        self._cancel_schedule()
 
     async def async_reconfigure(self, data: dict[str, Any]) -> None:
         old_config = self.config
@@ -222,6 +225,42 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
         self._scheduled_target = _when
         self.hass.async_create_task(self.async_request_refresh())
 
+    def _configured_next_poll_at(self, now: datetime) -> datetime:
+        return next_poll_at(
+            now,
+            timezone_name=self.config.get("timezone", "Asia/Tokyo"),
+            day_interval_minutes=self.config.get("day_interval_minutes", DEFAULT_DAY_INTERVAL),
+            night_interval_minutes=self.config.get("night_interval_minutes", DEFAULT_NIGHT_INTERVAL),
+            day_start=self.config.get("day_start", DEFAULT_DAY_START),
+            day_end=self.config.get("day_end", DEFAULT_DAY_END),
+        )
+
+    def _cancel_schedule(self) -> None:
+        if self._unsub_schedule:
+            self._unsub_schedule()
+            self._unsub_schedule = None
+
+    def _schedule_at(self, when: datetime) -> None:
+        self._cancel_schedule()
+        self._scheduled_target = when
+        self._unsub_schedule = async_track_point_in_time(self.hass, self._scheduled_refresh, when)
+
+    def _schedule_next_refresh(self, next_wake: datetime) -> None:
+        # Generate one minute before a planned device wake, then schedule the
+        # actual wake once that prewake refresh has completed.
+        now = datetime.now(timezone.utc)
+        prewake = next_wake - timedelta(minutes=1)
+        if self._scheduled_target is not None and self._scheduled_target == prewake:
+            schedule_at = next_wake
+        else:
+            schedule_at = max(now + timedelta(seconds=1), prewake)
+        self._schedule_at(schedule_at)
+
+    def _schedule_retry(self) -> None:
+        retry_at = datetime.now(timezone.utc) + timedelta(seconds=_UPDATE_RETRY_SECONDS)
+        _LOGGER.warning("frame update failed; retry scheduled in %s seconds", _UPDATE_RETRY_SECONDS)
+        self._schedule_at(retry_at)
+
     async def _async_calendar(self, entity_id: str | None, now: datetime) -> list[dict[str, Any]] | None:
         if not entity_id:
             return []
@@ -269,6 +308,25 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
         return response, unit
 
     async def _async_update_data(self) -> DisplaySnapshot:
+        now = datetime.now(timezone.utc)
+        update_succeeded = False
+        try:
+            self._scheduled_next_wake = self._configured_next_poll_at(now)
+            snapshot = await self._async_update_data_impl()
+            update_succeeded = True
+            return snapshot
+        finally:
+            if not self._stopped:
+                if update_succeeded:
+                    next_wake = self._scheduled_next_wake or self._configured_next_poll_at(datetime.now(timezone.utc))
+                    self._schedule_next_refresh(next_wake)
+                else:
+                    # DataUpdateCoordinator consumes the one-shot timer before
+                    # invoking this method. Always replace it, including when
+                    # a service call or renderer raises, or future wakeups stop.
+                    self._schedule_retry()
+
+    async def _async_update_data_impl(self) -> DisplaySnapshot:
         now = datetime.now(timezone.utc)
         timezone_name = self.config.get("timezone", "Asia/Tokyo")
         errors: list[str] = []
@@ -413,15 +471,8 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
             error_reason=";".join(errors) if errors else None,
             collected_at=now,
         )
-        next_wake = next_poll_at(
-            now,
-            timezone_name=timezone_name,
-            day_interval_minutes=self.config.get("day_interval_minutes", DEFAULT_DAY_INTERVAL),
-            night_interval_minutes=self.config.get("night_interval_minutes", DEFAULT_NIGHT_INTERVAL),
-            day_start=self.config.get("day_start", DEFAULT_DAY_START),
-            day_end=self.config.get("day_end", DEFAULT_DAY_END),
-        )
-        self.runtime.server_next_wake_at = next_wake
+        next_wake = self._configured_next_poll_at(now)
+        self._scheduled_next_wake = next_wake
         frame = await self.hass.async_add_executor_job(
             partial(render_snapshot, snapshot, next_poll_at=next_wake)
         )
@@ -429,20 +480,9 @@ class PhotoPainterCoordinator(DataUpdateCoordinator[DisplaySnapshot]):
         # while HA is still starting does not. Keep the stored frame until the
         # entities are actually up, so a restart minutes before the device wakes
         # cannot hand it a screen full of placeholders.
-        if self.hass.state is CoreState.running or self.runtime.pending_frame is None:
-            await self.runtime.async_set_pending_frame(frame)
+        if self.hass.state is CoreState.running or self.runtime.current_manifest_frame() is None:
+            await self.runtime.async_publish_pending_frame(frame, next_wake)
         self._dirty = False
-        if self._unsub_schedule:
-            self._unsub_schedule()
-        # Generate one minute before a planned device wake, then schedule the
-        # actual wake once that prewake refresh has completed.
-        prewake = next_wake - timedelta(minutes=1)
-        if self._scheduled_target is not None and self._scheduled_target == prewake:
-            schedule_at = next_wake
-        else:
-            schedule_at = max(now + timedelta(seconds=1), prewake)
-        self._scheduled_target = schedule_at
-        self._unsub_schedule = async_track_point_in_time(self.hass, self._scheduled_refresh, schedule_at)
         self._awaiting_entities = {
             entity_id
             for entity_id in self._bound_entity_ids()
